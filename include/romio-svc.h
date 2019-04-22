@@ -3,11 +3,17 @@
 #include <sys/uio.h>
 #include <aio.h>
 
+typedef struct romio_client * romio_client_t;
+
 /* easy to imagine more sophisticated distribution schemes
  * - even: hint a final file size and then divide that size across the N servers
  * - block: first N bytes to server 0, next N bytes to server 1, etc
  * - progressive: Lustre's Progressive File Layout strategy */
 int romio_setchunk(char *file, ssize_t nbytes);
+
+/* "init" might be a place to pass in distribution information too? */
+int romio_init(char * protocol, char * provider, romio_client_t  client );
+int romio_finalize(romio_client_t client);
 
 /* stateless api: always pass in a file name? */
 /* an iovec describes memory.  less well suited for I/O
