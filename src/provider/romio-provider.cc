@@ -1,8 +1,13 @@
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <margo.h>
 #include <thallium.hpp>
 #include <abt-io.h>
 #include <ssg.h>
+#include <map>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include "romio-svc-provider.h"
@@ -11,22 +16,52 @@ namespace tl = thallium;
 
 struct romio_svc_provider : public tl::provider<romio_svc_provider>
 {
+    tl::engine * engine;
     ssg_group_id_t gid;
     tl::pool pool;
     abt_io_instance_id abt_id;
+    ssize_t blocksize=1024*4;        // todo: some kind of general distribution function perhaps
+    std::map<std::string, int> filetable;      // filename to file id mapping
 
-    size_t process_io(const std::string &fiie, int kind,
+    size_t process_io(const tl::request& req, tl::bulk &b, const std::string &file, int kind,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
-        // open file
+        std::cout << "Entering " << __PRETTY_FUNCTION__ << std::endl;
+        // server will maintain a cache of open files
+        // std::map not great for LRU
+        int fd;
+        auto entry = filetable.find(file);
+        if (entry == filetable.end() ) {
+            fd = open(file.c_str(), O_CREAT|O_RDWR, 0666);
+        } else {
+            fd = entry->second;
+        }
+
+        std::vector<char> buffer(1024);
+
         // expose bulk region
-        // read: pull regions from file into intermediate buffer
-        // write: pack regions into intermediate buffer
+        // TODO: configurable how many segments at a time we can process
+        // ?? is there a way to get all of them?
+        // write: recieve regions into intermediate buffer
+        std::vector<std::pair<void *, std::size_t>>segments(1);
+        segments[0].first = (void *)(&(buffer[0]));
+        segments[0].second = buffer.size();
+
+        tl::endpoint ep = req.get_endpoint();
+        tl::bulk local = engine->expose(segments, tl::bulk_mode::read_write);
+
+        b.on(ep) >> local;
+        buffer.resize(local.size());
+
+        std::cout << "Server: " << buffer.size() << " bytes" << std::endl;
+        ssize_t ret = write(fd, buffer.data(), buffer.size());
+
+        // read: pull regions from file into intermediate buffer, then push to client
         return 0;
     }
     romio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
-        : tl::provider<romio_svc_provider>(*e, provider_id), gid(gid), pool(pool), abt_id(abtio) {
+        : tl::provider<romio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
 
             define("io", &romio_svc_provider::process_io, pool);
         }

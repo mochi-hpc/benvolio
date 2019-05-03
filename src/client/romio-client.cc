@@ -10,6 +10,7 @@ struct romio_client {
     // won't be a single server but rather a collection of them (ssg group?)
     tl::endpoint server;
     tl::remote_procedure io_op;
+    ssize_t blocksize=1024*4; // TODO: make more dynamic
 };
 
 typedef enum {
@@ -17,20 +18,28 @@ typedef enum {
     ROMIO_WRITE
 } op_kind;
 
-int romio_init(char * protocol, char * provider, romio_client_t  client )
+romio_client_t romio_init(char * protocol, char * provider)
 {
+    struct romio_client * client = (struct romio_client *)calloc(1,sizeof(*client));
     /* This is very c-like.  probably needs some C++ RAII thing here */
     client->engine = new tl::engine(protocol, THALLIUM_CLIENT_MODE);
     client->server = client->engine->lookup(provider);
 
     client->io_op = client->engine->define("io");
 
-    return 0;
+    return client;
+}
+
+/* need to patch up the API i think: we don't know what servers to talk to.  Or
+ * do you talk to one and then that provider informs the others? */
+int romio_setchunk(char *file, ssize_t nbytes)
+{
 }
 
 int romio_finalize(romio_client_t client)
 {
     delete client->engine;
+    free(client);
     return 0;
 }
 
@@ -51,6 +60,9 @@ static size_t romio_io(romio_client_t client, char *filename, op_kind op,
     for (int i=0; i< file_count; i++)
         file_vec.push_back(std::make_pair(file_starts[i], file_sizes[i]));
 
+    for (auto x : mem_vec)
+        std::cout << x.first << " " << (char *)x.first << " " << x.second;
+    std::cout << std::endl;
 
     tl::bulk myBulk;
     if (op == ROMIO_WRITE) {
@@ -61,16 +73,14 @@ static size_t romio_io(romio_client_t client, char *filename, op_kind op,
     return (client->io_op.on(client->server)(myBulk));
 }
 
-size_t romio_write(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t romio_write(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
     return (romio_io(client, filename, ROMIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes));
 }
 
-size_t romio_read(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t romio_read(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
     return (romio_io(client, filename, ROMIO_READ, iovcnt, iov, file_count, file_starts, file_sizes));
 }
-
-
