@@ -6,10 +6,15 @@
 int main(int argc, char **argv)
 {
     romio_client_t client=NULL;
+    struct romio_stats stats;
     struct iovec write_vec, read_vec;
     client = romio_init(argv[1], argv[2]);
     char msg[] = "Hello Mochi";
     char cmp[128];
+
+    printf("stat:");
+    romio_stat(client, "dummy", &stats);
+    printf("got %ld from provider\n", stats.blocksize);
 
     write_vec.iov_base = msg;
     write_vec.iov_len = strlen(msg) + 1;

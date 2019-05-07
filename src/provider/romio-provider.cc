@@ -20,10 +20,10 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
     ssg_group_id_t gid;
     tl::pool pool;
     abt_io_instance_id abt_id;
-    ssize_t blocksize=1024*4;        // todo: some kind of general distribution function perhaps
+    ssize_t blocksize=1024*8;        // todo: some kind of general distribution function perhaps
     std::map<std::string, int> filetable;      // filename to file id mapping
 
-    size_t process_io(const tl::request& req, tl::bulk &b, const std::string &file, int kind,
+    ssize_t process_io(const tl::request& req, tl::bulk &b, const std::string &file, int kind,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
         std::cout << "Entering " << __PRETTY_FUNCTION__ << std::endl;
@@ -59,11 +59,18 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         // read: pull regions from file into intermediate buffer, then push to client
         return 0;
     }
+    ssize_t stat(const std::string &file)
+    {
+        /* it should be possbile (one day) to set a block size on a per-file basis */
+        return blocksize;
+    }
     romio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
         : tl::provider<romio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
 
             define("io", &romio_svc_provider::process_io, pool);
+            define("stat", &romio_svc_provider::stat);
+
         }
     ~romio_svc_provider() {
         wait_for_finalize();

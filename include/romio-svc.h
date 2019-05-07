@@ -58,12 +58,12 @@ ssize_t romio_read (romio_client_t client,
  * ...
  */
 struct romio_stats {
-    int blocksize;
+    ssize_t blocksize;
 };
-int romio_stat(char *filename, struct romio_stats *stats);
+int romio_stat(romio_client_t client, char *filename, struct romio_stats *stats);
 
 /* flush: request all cached data written to disk */
-int romio_flush(char *filename);
+int romio_flush(romio_client_t client, char *filename);
 
 #ifdef __cplusplus
 }

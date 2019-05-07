@@ -2,6 +2,7 @@
 #include <romio-svc.h>
 #include <utility>
 #include <vector>
+#include <thallium/serialization/stl/string.hpp>
 
 namespace tl = thallium;
 
@@ -9,14 +10,16 @@ struct romio_client {
     tl::engine *engine;
     // won't be a single server but rather a collection of them (ssg group?)
     tl::endpoint server;
+    std::vector<tl::provider_handle> targets;
     tl::remote_procedure io_op;
+    tl::remote_procedure stat_op;
     ssize_t blocksize=1024*4; // TODO: make more dynamic
 };
 
 typedef enum {
     ROMIO_READ,
     ROMIO_WRITE
-} op_kind;
+} io_kind;
 
 romio_client_t romio_init(char * protocol, char * provider)
 {
@@ -24,8 +27,11 @@ romio_client_t romio_init(char * protocol, char * provider)
     /* This is very c-like.  probably needs some C++ RAII thing here */
     client->engine = new tl::engine(protocol, THALLIUM_CLIENT_MODE);
     client->server = client->engine->lookup(provider);
+    // TODO: deal with multiple providers
+    client->targets.push_back(tl::provider_handle(client->server, 0xABC));
 
     client->io_op = client->engine->define("io");
+    client->stat_op = client->engine->define("stat");
 
     return client;
 }
@@ -48,7 +54,7 @@ int romio_finalize(romio_client_t client)
 // - could compress the file locations: they are likely to compress quite well
 // - not doing a whole lot of other data manipulation on the client
 
-static size_t romio_io(romio_client_t client, char *filename, op_kind op,
+static size_t romio_io(romio_client_t client, char *filename, io_kind op,
         int64_t iovcnt, const struct iovec iovec_iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
@@ -60,17 +66,13 @@ static size_t romio_io(romio_client_t client, char *filename, op_kind op,
     for (int i=0; i< file_count; i++)
         file_vec.push_back(std::make_pair(file_starts[i], file_sizes[i]));
 
-    for (auto x : mem_vec)
-        std::cout << x.first << " " << (char *)x.first << " " << x.second;
-    std::cout << std::endl;
-
     tl::bulk myBulk;
     if (op == ROMIO_WRITE) {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_only);
     } else {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_write);
     }
-    return (client->io_op.on(client->server)(myBulk));
+    return (client->io_op.on(client->targets[0])(myBulk));
 }
 
 ssize_t romio_write(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
@@ -83,4 +85,10 @@ ssize_t romio_read(romio_client_t client, char *filename, int64_t iovcnt, const 
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
     return (romio_io(client, filename, ROMIO_READ, iovcnt, iov, file_count, file_starts, file_sizes));
+}
+
+int romio_stat(romio_client_t client, char *filename, struct romio_stats *stats)
+{
+    stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
+    return(1);
 }
