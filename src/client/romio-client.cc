@@ -2,17 +2,19 @@
 #include <romio-svc.h>
 #include <utility>
 #include <vector>
+#include <ssg.h>
 #include <thallium/serialization/stl/string.hpp>
 
+#include <assert.h>
 namespace tl = thallium;
 
 struct romio_client {
     tl::engine *engine;
-    // won't be a single server but rather a collection of them (ssg group?)
-    tl::endpoint server;
     std::vector<tl::provider_handle> targets;
     tl::remote_procedure io_op;
     tl::remote_procedure stat_op;
+    ssg_group_id_t gid;     // attaches to this group; not a member
+
     ssize_t blocksize=1024*4; // TODO: make more dynamic
 };
 
@@ -21,18 +23,34 @@ typedef enum {
     ROMIO_WRITE
 } io_kind;
 
-romio_client_t romio_init(char * protocol, char * provider)
+romio_client_t romio_init(char * protocol, char * cfg_file)
 {
+    char *addr_str;
+    int ret, i, nr_targets;
     struct romio_client * client = (struct romio_client *)calloc(1,sizeof(*client));
     /* This is very c-like.  probably needs some C++ RAII thing here */
     client->engine = new tl::engine(protocol, THALLIUM_CLIENT_MODE);
-    client->server = client->engine->lookup(provider);
-    // TODO: deal with multiple providers
-    client->targets.push_back(tl::provider_handle(client->server, 0xABC));
+
+    ssg_init(client->engine->get_margo_instance());
+
+    ret = ssg_group_id_load(cfg_file, &(client->gid));
+    assert (ret == SSG_SUCCESS);
+    ret = ssg_group_attach(client->gid);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "ssg_group attach: (%d)\n", ret);
+        assert (ret == SSG_SUCCESS);
+    }
+    nr_targets = ssg_get_group_size(client->gid);
+
+    for (i=0; i< nr_targets; i++) {
+        tl::endpoint server(*(client->engine), ssg_get_addr(client->gid, i) );
+        client->targets.push_back(tl::provider_handle(server, 0xABC));
+    }
 
     client->io_op = client->engine->define("io");
     client->stat_op = client->engine->define("stat");
 
+    free(addr_str);
     return client;
 }
 

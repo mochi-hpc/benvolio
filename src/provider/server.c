@@ -26,7 +26,12 @@ void print_address(margo_instance_id mid)
     size_t addr_str_size = 128;
     margo_addr_to_string(mid, addr_str, &addr_str_size, my_address);
     margo_addr_free(mid,my_address);
-    printf("Server running at address %s", addr_str);
+    printf("Server running at address %s\n", addr_str);
+}
+
+void service_config_store(char *filename, ssg_group_id_t gid)
+{
+    ssg_group_id_store(filename, gid);
 }
 int main(int argc, char **argv)
 {
@@ -52,7 +57,8 @@ int main(int argc, char **argv)
     ASSERT(gid != SSG_GROUP_ID_NULL, "ssg_group_create_mpi() failed (ret = %s)","SSG_GROUP_ID_NULL");
     margo_push_finalize_callback(mid, &finalized_ssg_group_cb, (void*)&gid);
 
-    print_address(mid);
+    if (rank == 0)
+        service_config_store(argv[2], gid);
 
     ret = romio_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, &romio_id);
 
