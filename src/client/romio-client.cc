@@ -24,7 +24,7 @@ typedef enum {
     ROMIO_WRITE
 } io_kind;
 
-romio_client_t romio_init(char * protocol, char * cfg_file)
+romio_client_t romio_init(const char * protocol, const char * cfg_file)
 {
     char *addr_str;
     int ret, i, nr_targets;
@@ -58,11 +58,11 @@ romio_client_t romio_init(char * protocol, char * cfg_file)
 
 /* need to patch up the API i think: we don't know what servers to talk to.  Or
  * do you talk to one and then that provider informs the others? */
-int romio_setchunk(char *file, ssize_t nbytes)
+int romio_setchunk(const char *file, ssize_t nbytes)
 {
 }
 
-int romio_delete(romio_client_t client, char *file)
+int romio_delete(romio_client_t client, const char *file)
 {
     return client->delete_op.on(client->targets[0])(std::string(file) );
 }
@@ -78,7 +78,7 @@ int romio_finalize(romio_client_t client)
 // - could compress the file locations: they are likely to compress quite well
 // - not doing a whole lot of other data manipulation on the client
 
-static size_t romio_io(romio_client_t client, char *filename, io_kind op,
+static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
         int64_t iovcnt, const struct iovec iovec_iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
@@ -99,19 +99,19 @@ static size_t romio_io(romio_client_t client, char *filename, io_kind op,
     return (client->io_op.on(client->targets[0])(myBulk));
 }
 
-ssize_t romio_write(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t romio_write(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
     return (romio_io(client, filename, ROMIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes));
 }
 
-ssize_t romio_read(romio_client_t client, char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t romio_read(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
     return (romio_io(client, filename, ROMIO_READ, iovcnt, iov, file_count, file_starts, file_sizes));
 }
 
-int romio_stat(romio_client_t client, char *filename, struct romio_stats *stats)
+int romio_stat(romio_client_t client, const char *filename, struct romio_stats *stats)
 {
     stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
     return(1);

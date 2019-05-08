@@ -19,10 +19,10 @@ typedef struct romio_client * romio_client_t;
  * - even: hint a final file size and then divide that size across the N servers
  * - block: first N bytes to server 0, next N bytes to server 1, etc
  * - progressive: Lustre's Progressive File Layout strategy */
-int romio_setchunk(char *file, ssize_t nbytes);
+int romio_setchunk(const char *file, ssize_t nbytes);
 
 /* "init" might be a place to pass in distribution information too? */
-romio_client_t romio_init(char * protocol, char * provider);
+romio_client_t romio_init(const char * protocol, const char * provider);
 int romio_finalize(romio_client_t client);
 
 /* stateless api: always pass in a file name? */
@@ -31,7 +31,7 @@ int romio_finalize(romio_client_t client);
  * - or use a 'struct iovec' for the memory parts? */
 
 ssize_t romio_write(romio_client_t client,
-        char *file,
+        const char *file,
         int64_t iovcnt,
         const struct iovec iov[],
         int64_t file_count,
@@ -39,7 +39,7 @@ ssize_t romio_write(romio_client_t client,
         uint64_t file_sizes[]);
 
 ssize_t romio_read (romio_client_t client,
-        char *file,
+        const char *file,
         int64_t iovcnt,
         const struct iovec iov[],
         int64_t file_count,
@@ -60,13 +60,13 @@ ssize_t romio_read (romio_client_t client,
 struct romio_stats {
     ssize_t blocksize;
 };
-int romio_stat(romio_client_t client, char *filename, struct romio_stats *stats);
+int romio_stat(romio_client_t client, const char *filename, struct romio_stats *stats);
 
 /* flush: request all cached data written to disk */
-int romio_flush(romio_client_t client, char *filename);
+int romio_flush(romio_client_t client, const char *filename);
 
 /* delete: remove the file */
-int romio_delete(romio_client_t client, char *filename);
+int romio_delete(romio_client_t client, const char *filename);
 #ifdef __cplusplus
 }
 #endif
