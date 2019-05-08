@@ -65,6 +65,8 @@ int romio_stat(romio_client_t client, char *filename, struct romio_stats *stats)
 /* flush: request all cached data written to disk */
 int romio_flush(romio_client_t client, char *filename);
 
+/* delete: remove the file */
+int romio_delete(romio_client_t client, char *filename);
 #ifdef __cplusplus
 }
 #endif

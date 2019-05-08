@@ -64,12 +64,18 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         /* it should be possbile (one day) to set a block size on a per-file basis */
         return blocksize;
     }
+    int del(const std::string &file) {
+        int ret = unlink(file.c_str());
+        if (ret == -1) ret = errno;
+        return ret;
+    }
     romio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
         : tl::provider<romio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
 
             define("io", &romio_svc_provider::process_io, pool);
             define("stat", &romio_svc_provider::stat);
+            define("delete", &romio_svc_provider::del);
 
         }
     ~romio_svc_provider() {

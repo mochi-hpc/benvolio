@@ -12,6 +12,9 @@ int main(int argc, char **argv)
     char msg[] = "Hello Mochi";
     char cmp[128];
 
+    printf("delete:");
+    romio_delete(client, "dummy");
+
     printf("stat:");
     romio_stat(client, "dummy", &stats);
     printf("got %ld from provider\n", stats.blocksize);

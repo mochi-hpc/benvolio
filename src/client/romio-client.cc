@@ -13,6 +13,7 @@ struct romio_client {
     std::vector<tl::provider_handle> targets;
     tl::remote_procedure io_op;
     tl::remote_procedure stat_op;
+    tl::remote_procedure delete_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
 
     ssize_t blocksize=1024*4; // TODO: make more dynamic
@@ -49,6 +50,7 @@ romio_client_t romio_init(char * protocol, char * cfg_file)
 
     client->io_op = client->engine->define("io");
     client->stat_op = client->engine->define("stat");
+    client->delete_op = client->engine->define("delete");
 
     free(addr_str);
     return client;
@@ -60,6 +62,10 @@ int romio_setchunk(char *file, ssize_t nbytes)
 {
 }
 
+int romio_delete(romio_client_t client, char *file)
+{
+    return client->delete_op.on(client->targets[0])(std::string(file) );
+}
 int romio_finalize(romio_client_t client)
 {
     delete client->engine;
