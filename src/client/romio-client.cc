@@ -1,9 +1,10 @@
-#include <thallium.hpp>
 #include <romio-svc.h>
+#include <thallium.hpp>
 #include <utility>
 #include <vector>
 #include <ssg.h>
 #include <thallium/serialization/stl/string.hpp>
+#include <thallium/serialization/stl/vector.hpp>
 
 #include <assert.h>
 namespace tl = thallium;
@@ -52,6 +53,11 @@ romio_client_t romio_init(const char * protocol, const char * cfg_file)
     client->stat_op = client->engine->define("stat");
     client->delete_op = client->engine->define("delete");
 
+    struct romio_stats stats;
+    // TODO: might want to be able to set distribution on a per-file basis
+    romio_stat(client, "/dev/null", &stats);
+    client->blocksize = stats.blocksize;
+
     free(addr_str);
     return client;
 }
@@ -86,9 +92,12 @@ static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
     for (int i=0; i< iovcnt; i++)
         mem_vec.push_back(std::make_pair(iovec_iov[i].iov_base, iovec_iov[i].iov_len));
 
-    std::vector<std::pair<off_t, uint64_t>> file_vec;
-    for (int i=0; i< file_count; i++)
-        file_vec.push_back(std::make_pair(file_starts[i], file_sizes[i]));
+    std::vector<off_t> offset_vec;
+    std::vector<uint64_t> size_vec;
+    for (int i=0; i< file_count; i++) {
+        offset_vec.push_back(file_starts[i]);
+        size_vec.push_back(file_sizes[i]);
+    }
 
     tl::bulk myBulk;
     if (op == ROMIO_WRITE) {
@@ -96,7 +105,7 @@ static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
     } else {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_write);
     }
-    return (client->io_op.on(client->targets[0])(myBulk));
+    return (client->io_op.on(client->targets[0])(myBulk, std::string(filename), (int)op, offset_vec, size_vec));
 }
 
 ssize_t romio_write(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],

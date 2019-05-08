@@ -26,7 +26,6 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
     ssize_t process_io(const tl::request& req, tl::bulk &b, const std::string &file, int kind,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
-        std::cout << "Entering " << __PRETTY_FUNCTION__ << std::endl;
         // server will maintain a cache of open files
         // std::map not great for LRU
         int fd;
@@ -37,6 +36,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             fd = entry->second;
         }
 
+        // probably needs to be larger and registered with mercury somehow
         std::vector<char> buffer(1024);
 
         // expose bulk region
@@ -51,13 +51,13 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         tl::bulk local = engine->expose(segments, tl::bulk_mode::read_write);
 
         b.on(ep) >> local;
-        buffer.resize(local.size());
+        buffer.resize(b.size());
 
-        std::cout << "Server: " << buffer.size() << " bytes" << std::endl;
         ssize_t ret = write(fd, buffer.data(), buffer.size());
 
+        req.respond(buffer.size());
+        return ret;
         // read: pull regions from file into intermediate buffer, then push to client
-        return 0;
     }
     ssize_t stat(const std::string &file)
     {

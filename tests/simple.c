@@ -12,7 +12,7 @@ int main(int argc, char **argv)
     char msg[] = "Hello Mochi";
     char cmp[128];
 
-    printf("delete:");
+    printf("delete:\n");
     romio_delete(client, "dummy");
 
     printf("stat:");
