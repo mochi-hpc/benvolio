@@ -30,7 +30,9 @@ int main(int argc, char **argv)
     read_vec.iov_base = cmp;
     read_vec.iov_len = 128;
     printf("reading\n");
-    romio_read(client, "dummy", 1, &read_vec, 1, &offset, &size);
+    off_t offsets[3] = {0, 4, 8};
+    uint64_t sizes[3] = {2, 2, 2};
+    romio_read(client, "dummy", 1, &read_vec, 3, offsets, sizes);
     printf("read back %s\n", read_vec.iov_base);
 
     romio_finalize(client);
