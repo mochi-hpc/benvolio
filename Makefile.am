@@ -26,7 +26,8 @@ TESTS = tests/simple
 
 tests_simple_SOURCES = tests/simple.c
 # hack/trick to force linking with C++
-nodist_EXTRA_tests_simple_SOURCES = dummy.cc
+# but all symbols are extern C so it should not be needed
+#nodist_EXTRA_tests_simple_SOURCES = dummy.cc
 tests_simple_DEPENDENCIES = lib/libromio-client.la
 tests_simple_LDFLAGS = -Llib -lromio-client
 
