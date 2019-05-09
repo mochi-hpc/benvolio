@@ -74,6 +74,8 @@ int romio_delete(romio_client_t client, const char *file)
 }
 int romio_finalize(romio_client_t client)
 {
+    ssg_group_detach(client->gid);
+    ssg_finalize();
     delete client->engine;
     free(client);
     return 0;
