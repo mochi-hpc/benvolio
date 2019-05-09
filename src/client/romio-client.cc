@@ -12,7 +12,8 @@ namespace tl = thallium;
 struct romio_client {
     tl::engine *engine;
     std::vector<tl::provider_handle> targets;
-    tl::remote_procedure io_op;
+    tl::remote_procedure read_op;
+    tl::remote_procedure write_op;
     tl::remote_procedure stat_op;
     tl::remote_procedure delete_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
@@ -49,7 +50,8 @@ romio_client_t romio_init(const char * protocol, const char * cfg_file)
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
 
-    client->io_op = client->engine->define("io");
+    client->read_op = client->engine->define("read");
+    client->write_op = client->engine->define("write");
     client->stat_op = client->engine->define("stat");
     client->delete_op = client->engine->define("delete");
 
@@ -104,10 +106,11 @@ static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
     tl::bulk myBulk;
     if (op == ROMIO_WRITE) {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_only);
+        return (client->write_op.on(client->targets[0])(myBulk, std::string(filename), offset_vec, size_vec));
     } else {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_write);
+        return (client->read_op.on(client->targets[0])(myBulk, std::string(filename), offset_vec, size_vec));
     }
-    return (client->io_op.on(client->targets[0])(myBulk, std::string(filename), (int)op, offset_vec, size_vec));
 }
 
 ssize_t romio_write(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
