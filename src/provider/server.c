@@ -48,7 +48,10 @@ int main(int argc, char **argv)
     mid = margo_init(argv[1], MARGO_SERVER_MODE, 0, -1);
     margo_enable_remote_shutdown(mid);
 
-    abtio = abt_io_init(1);
+    /* set this is "number of backing threads" to whatever is best for
+     * the underlying backing store. : TODO: should make it command line
+     * configurable */
+    abtio = abt_io_init(2);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
     ret = ssg_init(mid);

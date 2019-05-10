@@ -33,7 +33,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         int fd=-1;
         auto entry = filetable.find(file);
         if (entry == filetable.end() ) {
-            fd = open(file.c_str(), flags, 0644);
+            fd = abt_io_open(abt_id, file.c_str(), flags, 0644);
             filetable[file] = fd;
         } else {
             fd = entry->second;
@@ -66,7 +66,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         b.on(ep) >> local;
         ssize_t xfered=0;
         for (int i = 0; i< file_starts.size(); i++)
-            xfered += pwrite(fd, buffer+xfered, file_sizes[i], file_starts[i]);
+            xfered += abt_io_pwrite(abt_id, fd, buffer+xfered, file_sizes[i], file_starts[i]);
 
         req.respond(xfered);
         return 0;
@@ -85,7 +85,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         int fd = getfd(file, flags);
         ssize_t xfered = 0;
         for (int i= 0; i< file_starts.size(); i++) {
-            int ret = pread(fd, buffer+xfered, file_sizes[i], file_starts[i]);
+            int ret = abt_io_pread(abt_id, fd, buffer+xfered, file_sizes[i], file_starts[i]);
             if (ret == -1) {
                 perror("pread");
                 break;
@@ -110,7 +110,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         return blocksize;
     }
     int del(const std::string &file) {
-        int ret = unlink(file.c_str());
+        int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
         return ret;
     }
