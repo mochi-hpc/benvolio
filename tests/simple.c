@@ -26,6 +26,8 @@ int main(int argc, char **argv)
     printf("writing\n");
     romio_write(client, "dummy", 1, &write_vec, 1, &offset, &size);
 
+    printf("flushing\n");
+    romio_flush(client, "dummy");
 
     read_vec.iov_base = cmp;
     read_vec.iov_len = 128;

@@ -16,6 +16,7 @@ struct romio_client {
     tl::remote_procedure write_op;
     tl::remote_procedure stat_op;
     tl::remote_procedure delete_op;
+    tl::remote_procedure flush_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
 
     ssize_t blocksize=1024*4; // TODO: make more dynamic
@@ -54,6 +55,7 @@ romio_client_t romio_init(const char * protocol, const char * cfg_file)
     client->write_op = client->engine->define("write");
     client->stat_op = client->engine->define("stat");
     client->delete_op = client->engine->define("delete");
+    client->flush_op = client->engine->define("flush");
 
     struct romio_stats stats;
     // TODO: might want to be able to set distribution on a per-file basis
@@ -129,4 +131,13 @@ int romio_stat(romio_client_t client, const char *filename, struct romio_stats *
 {
     stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
     return(1);
+}
+
+int romio_flush(romio_client_t client, const char *filename)
+{
+    int ret=0;
+    for (auto target : client->targets)
+        ret = client->flush_op.on(target)(std::string(filename));
+
+    return ret;
 }

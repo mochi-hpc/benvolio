@@ -114,6 +114,11 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         if (ret == -1) ret = errno;
         return ret;
     }
+    int flush(const std::string &file) {
+        int fd = getfd(file, O_RDWR);
+        return (fsync(fd));
+    }
+
     romio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
         : tl::provider<romio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
@@ -122,6 +127,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             define("read", &romio_svc_provider::process_read, pool);
             define("stat", &romio_svc_provider::stat);
             define("delete", &romio_svc_provider::del);
+            define("flush", &romio_svc_provider::flush);
 
         }
     ~romio_svc_provider() {
