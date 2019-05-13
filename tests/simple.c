@@ -2,13 +2,15 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <romio-svc.h>
+#include <mpi.h>
 
 int main(int argc, char **argv)
 {
+    MPI_Init(&argc, &argv);
     romio_client_t client=NULL;
     struct romio_stats stats;
     struct iovec write_vec, read_vec;
-    client = romio_init(argv[1], argv[2]);
+    client = romio_init(MPI_COMM_WORLD, argv[1], argv[2]);
     char msg[] = "Hello Mochi";
     char cmp[128];
 
@@ -38,4 +40,5 @@ int main(int argc, char **argv)
     printf("read back %s\n", read_vec.iov_base);
 
     romio_finalize(client);
+    MPI_Finalize();
 }

@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 #include <ssg.h>
+#include <mpi.h>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
@@ -27,18 +28,31 @@ typedef enum {
     ROMIO_WRITE
 } io_kind;
 
-romio_client_t romio_init(const char * protocol, const char * cfg_file)
+romio_client_t romio_init(MPI_Comm comm, const char * protocol, const char * cfg_file)
 {
     char *addr_str;
+    int rank;
     int ret, i, nr_targets;
     struct romio_client * client = (struct romio_client *)calloc(1,sizeof(*client));
     /* This is very c-like.  probably needs some C++ RAII thing here */
     client->engine = new tl::engine(protocol, THALLIUM_CLIENT_MODE);
+    char *ssg_group_buf;
 
     ssg_init(client->engine->get_margo_instance());
 
-    ret = ssg_group_id_load(cfg_file, &(client->gid));
-    assert (ret == SSG_SUCCESS);
+    /* scalable read-and-broadcast of group information: only one process reads
+     * cfg from file system */
+    MPI_Comm_rank(comm, &rank);
+    size_t ssg_serialize_size;
+    ssg_group_buf = (char *) malloc(1024); // how big do these get?
+    if (rank == 0) {
+        ret = ssg_group_id_load(cfg_file, &(client->gid));
+        assert (ret == SSG_SUCCESS);
+        ssg_group_id_serialize(client->gid, &ssg_group_buf, &ssg_serialize_size);
+    }
+    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, comm);
+    ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &(client->gid));
+
     ret = ssg_group_attach(client->gid);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "ssg_group attach: (%d)\n", ret);
