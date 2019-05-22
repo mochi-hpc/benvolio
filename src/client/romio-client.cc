@@ -10,9 +10,12 @@
 #include <assert.h>
 namespace tl = thallium;
 
+#define MAX_PROTO_LEN 24
+
 struct romio_client {
     tl::engine *engine;
     std::vector<tl::provider_handle> targets;
+    char proto[MAX_PROTO_LEN];
     tl::remote_procedure read_op;
     tl::remote_procedure write_op;
     tl::remote_procedure stat_op;
@@ -28,20 +31,30 @@ typedef enum {
     ROMIO_WRITE
 } io_kind;
 
-romio_client_t romio_init(MPI_Comm comm, const char * protocol, const char * cfg_file)
+int  set_proto_from_addr(romio_client_t client, char *addr_str)
+{
+    int i;
+    for (i=0; i< MAX_PROTO_LEN; i++) {
+        if (addr_str[i] == ':') {
+            client->proto[i] = '\0';
+            break;
+        }
+        client->proto[i] = addr_str[i];
+    }
+    if (client->proto[i] != '\0') return -1;
+    return 0;
+}
+romio_client_t romio_init(MPI_Comm comm, const char * cfg_file)
 {
     char *addr_str;
     int rank;
     int ret, i, nr_targets;
     struct romio_client * client = (struct romio_client *)calloc(1,sizeof(*client));
-    /* This is very c-like.  probably needs some C++ RAII thing here */
-    client->engine = new tl::engine(protocol, THALLIUM_CLIENT_MODE);
     char *ssg_group_buf;
 
-    ssg_init(client->engine->get_margo_instance());
 
     /* scalable read-and-broadcast of group information: only one process reads
-     * cfg from file system */
+     * cfg from file system.  These routines can all be called before ssg_init */
     MPI_Comm_rank(comm, &rank);
     size_t ssg_serialize_size;
     ssg_group_buf = (char *) malloc(1024); // how big do these get?
@@ -52,6 +65,12 @@ romio_client_t romio_init(MPI_Comm comm, const char * protocol, const char * cfg
     }
     MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, comm);
     ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &(client->gid));
+    addr_str = ssg_group_id_get_addr_str(client->gid);
+    if (set_proto_from_addr(client, addr_str) != 0) return NULL;
+
+    /* This is very c-like.  probably needs some C++ RAII thing here */
+    client->engine = new tl::engine(client->proto, THALLIUM_CLIENT_MODE);
+    ssg_init(client->engine->get_margo_instance());
 
     ret = ssg_group_attach(client->gid);
     if (ret != SSG_SUCCESS) {

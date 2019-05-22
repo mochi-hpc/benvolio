@@ -10,7 +10,7 @@ int main(int argc, char **argv)
     romio_client_t client=NULL;
     struct romio_stats stats;
     struct iovec write_vec, read_vec;
-    client = romio_init(MPI_COMM_WORLD, argv[1], argv[2]);
+    client = romio_init(MPI_COMM_WORLD, argv[1]);
     char msg[] = "Hello Mochi";
     char cmp[128];
 
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     off_t offsets[3] = {0, 4, 8};
     uint64_t sizes[3] = {2, 2, 2};
     romio_read(client, "dummy", 1, &read_vec, 3, offsets, sizes);
-    printf("read back %s\n", read_vec.iov_base);
+    printf("read back %s\n", (char *)read_vec.iov_base);
 
     romio_finalize(client);
     MPI_Finalize();

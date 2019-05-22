@@ -23,7 +23,7 @@ typedef struct romio_client * romio_client_t;
 int romio_setchunk(const char *file, ssize_t nbytes);
 
 /* "init" might be a place to pass in distribution information too? */
-romio_client_t romio_init(MPI_Comm comm, const char * protocol, const char * ssg_statefile);
+romio_client_t romio_init(MPI_Comm comm, const char * ssg_statefile);
 int romio_finalize(romio_client_t client);
 
 /* stateless api: always pass in a file name? */
