@@ -8,6 +8,7 @@
 #include <abt-io.h>
 #include <ssg.h>
 #include <map>
+#include <mutex>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 #include "romio-svc-provider.h"
@@ -28,6 +29,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
     std::map<std::string, int> filetable;      // filename to file id mapping
     // probably needs to be larger and registered with mercury somehow
     char buffer[BUFSIZE];    // intermediate buffer for read/write operations
+    tl::mutex    op_mutex;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
@@ -57,6 +59,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             return 0;
         }
 
+        std::lock_guard<tl::mutex> guard(op_mutex);
         /* cannot open read-only:
          - might want to data-sieve the I/O requests
          - might later read file */
@@ -140,6 +143,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             req.respond(0);
             return 0;
         }
+        std::lock_guard<tl::mutex> guard(op_mutex);
         /* like with write, open for both read and write in case file opened
          * first for read then written to */
         int flags = O_RDWR;
