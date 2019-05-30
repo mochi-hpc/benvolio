@@ -56,13 +56,14 @@ romio_client_t romio_init(MPI_Comm comm, const char * cfg_file)
     /* scalable read-and-broadcast of group information: only one process reads
      * cfg from file system.  These routines can all be called before ssg_init */
     MPI_Comm_rank(comm, &rank);
-    size_t ssg_serialize_size;
+    uint64_t ssg_serialize_size;
     ssg_group_buf = (char *) malloc(1024); // how big do these get?
     if (rank == 0) {
         ret = ssg_group_id_load(cfg_file, &(client->gid));
         assert (ret == SSG_SUCCESS);
         ssg_group_id_serialize(client->gid, &ssg_group_buf, &ssg_serialize_size);
     }
+    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, comm);
     MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, comm);
     ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &(client->gid));
     addr_str = ssg_group_id_get_addr_str(client->gid);
