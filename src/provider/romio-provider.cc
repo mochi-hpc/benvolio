@@ -13,6 +13,7 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include "romio-svc-provider.h"
 
+#include "io_stats.h"
 namespace tl = thallium;
 
 #define BUFSIZE 1024
@@ -29,7 +30,9 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
     std::map<std::string, int> filetable;      // filename to file id mapping
     // probably needs to be larger and registered with mercury somehow
     char buffer[BUFSIZE];    // intermediate buffer for read/write operations
+    struct io_stats stats;
     tl::mutex    op_mutex;
+    tl::mutex    stats_mutex;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
@@ -51,11 +54,16 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
     ssize_t process_write(const tl::request& req, tl::bulk &client_bulk, const std::string &file,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
+        double write_time = ABT_get_wtime();
         /* What else can we do with an empty memory description or file
          description other than return immediately? */
         if (client_bulk.size() == 0 ||
                 file_starts.size() == 0) {
             req.respond(0);
+            write_time = ABT_get_wtime() - write_time;
+            std::lock_guard<tl::mutex> guard(stats_mutex);
+            stats.write_rpc_calls++;
+            stats.write_rpc_time += write_time;
             return 0;
         }
 
@@ -106,9 +114,17 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             // - select a subset on the client-side bulk descriptor before
             //   associating it with a connection.
             while (file_idx < file_starts.size() && file_xfer < client_xfer) {
+                double write_time = ABT_get_wtime();
+
                 // we might be able to only write a partial block
                 nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
                 file_xfer += abt_io_pwrite(abt_id, fd, buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor);
+                {
+                    std::lock_guard<tl::mutex> guard(stats_mutex);
+                    stats.server_write_calls++;
+                    stats.server_write_time = write_time = ABT_get_wtime();
+                    stats.bytes_written += nbytes;
+                }
 
                 if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                     file_idx++;
@@ -127,6 +143,10 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             client_cursor += client_xfer;
         }
         req.respond(xfered);
+        {
+            std::lock_guard<tl::mutex> guard(stats_mutex);
+            stats.server_write_time += ABT_get_wtime() - write_time;
+        }
         return 0;
     }
 
@@ -196,6 +216,12 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         /* it should be possbile (one day) to set a block size on a per-file basis */
         return blocksize;
     }
+
+    struct io_stats statistics() {
+
+        std::lock_guard<tl::mutex> guard(stats_mutex);
+        return (stats);
+    }
     int del(const std::string &file) {
         int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
@@ -215,6 +241,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             define("stat", &romio_svc_provider::stat);
             define("delete", &romio_svc_provider::del);
             define("flush", &romio_svc_provider::flush);
+            define("statistics", &romio_svc_provider::statistics);
 
         }
     ~romio_svc_provider() {

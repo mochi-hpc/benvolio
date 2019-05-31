@@ -5,6 +5,8 @@
 #include <romio-svc.h>
 #include <mpi.h>
 
+#define VERBOSE 1
+
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
@@ -72,6 +74,10 @@ int main(int argc, char **argv)
     }
     free(bigbuf);
     free(cmpbuf);
+
+#if VERBOSE
+    romio_statistics(client);
+#endif
 
     romio_finalize(client);
     MPI_Finalize();

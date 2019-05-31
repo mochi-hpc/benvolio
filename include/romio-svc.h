@@ -63,6 +63,8 @@ struct romio_stats {
 };
 int romio_stat(romio_client_t client, const char *filename, struct romio_stats *stats);
 
+int romio_statistics(romio_client_t client);
+
 /* flush: request all cached data written to disk */
 int romio_flush(romio_client_t client, const char *filename);
 

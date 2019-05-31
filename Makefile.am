@@ -22,6 +22,8 @@ lib_libromio_provider_la_SOURCES = src/provider/romio-provider.cc
 include_HEADERS = include/romio-svc.h \
 	include/romio-svc-provider.h
 
+noinst_HEADERS = include/io_stats.h
+
 TESTS = tests/simple
 
 tests_simple_SOURCES = tests/simple.c
