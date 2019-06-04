@@ -147,7 +147,8 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         req.respond(xfered);
         {
             std::lock_guard<tl::mutex> guard(stats_mutex);
-            stats.server_write_time += ABT_get_wtime() - write_time;
+            stats.write_rpc_calls++;
+            stats.write_rpc_time += ABT_get_wtime() - write_time;
             stats.mutex_time += wr_mutex_time;
         }
         return 0;
@@ -161,12 +162,21 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
     ssize_t process_read(const tl::request &req, tl::bulk &client_bulk, const std::string &file,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
+        double read_time = ABT_get_wtime();
+
         if (client_bulk.size() == 0 ||
                 file_starts.size() == 0) {
             req.respond(0);
+            std::lock_guard<tl::mutex> guard(stats_mutex);
+            stats.read_rpc_calls++;
+            stats.server_read_time += ABT_get_wtime() - read_time;
+
             return 0;
         }
+        double rd_mutex_time = ABT_get_wtime();
         std::lock_guard<tl::mutex> guard(op_mutex);
+        rd_mutex_time = ABT_get_wtime() - rd_mutex_time;
+
         /* like with write, open for both read and write in case file opened
          * first for read then written to */
         int flags = O_RDWR;
@@ -183,9 +193,16 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 
         for (unsigned int i = 0; i< ntimes; i++) {
             file_xfer = 0;
+            double pread_time = ABT_get_wtime();
             while (file_idx < file_starts.size() && file_xfer < BUFSIZE) {
                 nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, BUFSIZE-buf_cursor);
                 file_xfer += abt_io_pread(abt_id, fd, buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor);
+                {
+                    std::lock_guard<tl::mutex> guard(stats_mutex);
+                    stats.server_read_calls++;
+                    stats.server_read_time = ABT_get_wtime() - pread_time;
+                    stats.bytes_read += nbytes;
+                }
 
                 if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                     file_idx++;
@@ -210,6 +227,12 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             client_cursor += client_xfer;
         }
         req.respond(xfered);
+        {
+            std::lock_guard<tl::mutex> guard(stats_mutex);
+            stats.read_rpc_calls++;
+            stats.read_rpc_time += ABT_get_wtime() - read_time;
+            stats.mutex_time += rd_mutex_time;
+        }
         return 0;
 
     }
