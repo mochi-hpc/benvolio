@@ -1,4 +1,4 @@
-#include <romio-svc.h>
+#include <mochio.h>
 #include <thallium.hpp>
 #include <utility>
 #include <vector>
@@ -13,7 +13,7 @@ namespace tl = thallium;
 
 #define MAX_PROTO_LEN 24
 
-struct romio_client {
+struct mochio_client {
     tl::engine *engine;
     std::vector<tl::provider_handle> targets;
     char proto[MAX_PROTO_LEN];
@@ -24,16 +24,17 @@ struct romio_client {
     tl::remote_procedure flush_op;
     tl::remote_procedure statistics_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
+    io_stats statistics;
 
     ssize_t blocksize=1024*4; // TODO: make more dynamic
 };
 
 typedef enum {
-    ROMIO_READ,
-    ROMIO_WRITE
+    mochio_READ,
+    mochio_WRITE
 } io_kind;
 
-int  set_proto_from_addr(romio_client_t client, char *addr_str)
+int  set_proto_from_addr(mochio_client_t client, char *addr_str)
 {
     int i;
     for (i=0; i< MAX_PROTO_LEN; i++) {
@@ -46,12 +47,12 @@ int  set_proto_from_addr(romio_client_t client, char *addr_str)
     if (client->proto[i] != '\0') return -1;
     return 0;
 }
-romio_client_t romio_init(MPI_Comm comm, const char * cfg_file)
+mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
 {
     char *addr_str;
     int rank;
     int ret, i, nr_targets;
-    struct romio_client * client = (struct romio_client *)calloc(1,sizeof(*client));
+    struct mochio_client * client = (struct mochio_client *)calloc(1,sizeof(*client));
     char *ssg_group_buf;
 
 
@@ -94,9 +95,9 @@ romio_client_t romio_init(MPI_Comm comm, const char * cfg_file)
     client->flush_op = client->engine->define("flush");
     client->statistics_op = client->engine->define("statistics");
 
-    struct romio_stats stats;
+    struct mochio_stats stats;
     // TODO: might want to be able to set distribution on a per-file basis
-    romio_stat(client, "/dev/null", &stats);
+    mochio_stat(client, "/dev/null", &stats);
     client->blocksize = stats.blocksize;
 
     free(addr_str);
@@ -105,16 +106,16 @@ romio_client_t romio_init(MPI_Comm comm, const char * cfg_file)
 
 /* need to patch up the API i think: we don't know what servers to talk to.  Or
  * do you talk to one and then that provider informs the others? */
-int romio_setchunk(const char *file, ssize_t nbytes)
+int mochio_setchunk(const char *file, ssize_t nbytes)
 {
     return 0;
 }
 
-int romio_delete(romio_client_t client, const char *file)
+int mochio_delete(mochio_client_t client, const char *file)
 {
     return client->delete_op.on(client->targets[0])(std::string(file) );
 }
-int romio_finalize(romio_client_t client)
+int mochio_finalize(mochio_client_t client)
 {
     ssg_group_detach(client->gid);
     ssg_finalize();
@@ -128,7 +129,7 @@ int romio_finalize(romio_client_t client)
 // - could compress the file locations: they are likely to compress quite well
 // - not doing a whole lot of other data manipulation on the client
 
-static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
+static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op,
         int64_t iovcnt, const struct iovec iovec_iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
@@ -144,7 +145,7 @@ static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
     }
 
     tl::bulk myBulk;
-    if (op == ROMIO_WRITE) {
+    if (op == mochio_WRITE) {
         myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_only);
         return (client->write_op.on(client->targets[0])(myBulk, std::string(filename), offset_vec, size_vec));
     } else {
@@ -153,36 +154,55 @@ static size_t romio_io(romio_client_t client, const char *filename, io_kind op,
     }
 }
 
-ssize_t romio_write(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
-    return (romio_io(client, filename, ROMIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes));
+    ssize_t ret;
+    double write_time = ABT_get_wtime();
+    client->statistics.client_write_calls++;
+
+    ret = mochio_io(client, filename, mochio_WRITE, iovcnt, iov, file_count, file_starts, file_sizes);
+
+    write_time = ABT_get_wtime() - write_time;
+    client->statistics.client_write_time += write_time;
+
+    return ret;
 }
 
-ssize_t romio_read(romio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
+ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
-    return (romio_io(client, filename, ROMIO_READ, iovcnt, iov, file_count, file_starts, file_sizes));
+    ssize_t ret;
+    double read_time = ABT_get_wtime();
+    client->statistics.client_read_calls++;
+
+    ret = mochio_io(client, filename, mochio_READ, iovcnt, iov, file_count, file_starts, file_sizes);
+
+    read_time = ABT_get_wtime() - read_time;
+    client->statistics.client_read_time += read_time;
+
+    return ret;
 }
 
-int romio_stat(romio_client_t client, const char *filename, struct romio_stats *stats)
+int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats)
 {
     stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
     return(1);
 }
 
-int romio_statistics(romio_client_t client)
+int mochio_statistics(mochio_client_t client)
 {
     int ret =0;
     for (auto target : client->targets) {
         auto s = client->statistics_op.on(target)();
 
-        io_stats(s).print();
+        client->statistics = client->statistics + io_stats(s);
+        client->statistics.print();
     }
     return ret;
 }
 
-int romio_flush(romio_client_t client, const char *filename)
+int mochio_flush(mochio_client_t client, const char *filename)
 {
     int ret=0;
     for (auto target : client->targets)

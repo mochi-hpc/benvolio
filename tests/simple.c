@@ -2,7 +2,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <romio-svc.h>
+#include <mochio.h>
 #include <mpi.h>
 
 #define VERBOSE 1
@@ -10,21 +10,21 @@
 int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
-    romio_client_t client=NULL;
-    struct romio_stats stats;
+    mochio_client_t client=NULL;
+    struct mochio_stats stats;
     struct iovec write_vec, read_vec;
-    client = romio_init(MPI_COMM_WORLD, argv[1]);
+    client = mochio_init(MPI_COMM_WORLD, argv[1]);
     char msg[] = "Hello Mochi";
     char cmp[128] = "";
     int ret = 0;
 
 #if 0
     printf("delete:\n");
-    romio_delete(client, "dummy");
+    mochio_delete(client, "dummy");
 #endif
 
     printf("stat:");
-    romio_stat(client, "dummy", &stats);
+    mochio_stat(client, "dummy", &stats);
     printf("got %ld from provider\n", stats.blocksize);
 
     write_vec.iov_base = msg;
@@ -32,10 +32,10 @@ int main(int argc, char **argv)
     off_t offset= 0;
     uint64_t size=strlen(msg);
     printf("writing\n");
-    romio_write(client, "dummy", 1, &write_vec, 1, &offset, &size);
+    mochio_write(client, "dummy", 1, &write_vec, 1, &offset, &size);
 
     printf("flushing\n");
-    romio_flush(client, "dummy");
+    mochio_flush(client, "dummy");
 
     read_vec.iov_base = cmp;
     read_vec.iov_len = 128;
@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     off_t offsets[3] = {0, 4, 8};
     uint64_t sizes[3] = {2, 2, 2};
     char compare[] = "Heo ch";
-    romio_read(client, "dummy", 1, &read_vec, 3, offsets, sizes);
+    mochio_read(client, "dummy", 1, &read_vec, 3, offsets, sizes);
     if (strcmp(compare, read_vec.iov_base) != 0) {
         printf("Error: Expected: %s got: %s\n", compare, (char *)read_vec.iov_base);
         ret -= -1;
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     write_vec.iov_len = 4096;
     offset = 20;
     size = 4096;
-    romio_write(client, "dummy", 1, &write_vec, 1, &offset, &size);
+    mochio_write(client, "dummy", 1, &write_vec, 1, &offset, &size);
 
     printf("Longer read\n");
     int *cmpbuf = malloc(4096);
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     read_vec.iov_len = 4096;
     offset = 20;
     size = 4096;
-    romio_read(client, "dummy",1, &read_vec, 1, &offset, &size);
+    mochio_read(client, "dummy",1, &read_vec, 1, &offset, &size);
     for (int i=0; i< 1024; i++) {
         if (bigbuf[i] != cmpbuf[i]) {
             printf("Expected %d got %d\n", bigbuf[i], cmpbuf[i]);
@@ -76,10 +76,10 @@ int main(int argc, char **argv)
     free(cmpbuf);
 
 #if VERBOSE
-    romio_statistics(client);
+    mochio_statistics(client);
 #endif
 
-    romio_finalize(client);
+    mochio_finalize(client);
     MPI_Finalize();
     return ret;
 }

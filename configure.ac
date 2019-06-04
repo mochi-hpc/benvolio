@@ -1,11 +1,11 @@
 
 AC_PREREQ([2.59])
-AC_INIT([romio-sds], [0.0], [robl@mcs.anl.gov])
+AC_INIT([mochio], [0.0], [robl@mcs.anl.gov])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects silent-rules])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/client/romio-client.cc])
-AC_CONFIG_HEADERS([src/romio-sds-config.h])
+AC_CONFIG_SRCDIR([src/client/mochio-client.cc])
+AC_CONFIG_HEADERS([src/mochio-config.h])
 #
 
 # checks for programs
@@ -64,5 +64,5 @@ AC_LINK_IFELSE(
 
 # checks for library functions
 
-AC_CONFIG_FILES([Makefile maint/romio-svc.pc])
+AC_CONFIG_FILES([Makefile maint/mochio.pc])
 AC_OUTPUT

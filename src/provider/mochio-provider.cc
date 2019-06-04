@@ -11,7 +11,7 @@
 #include <mutex>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
-#include "romio-svc-provider.h"
+#include "mochio-provider.h"
 
 #include "io_stats.h"
 namespace tl = thallium;
@@ -20,7 +20,7 @@ namespace tl = thallium;
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-struct romio_svc_provider : public tl::provider<romio_svc_provider>
+struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 {
     tl::engine * engine;
     ssg_group_id_t gid;
@@ -67,7 +67,9 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             return 0;
         }
 
+        double wr_mutex_time = ABT_get_wtime();
         std::lock_guard<tl::mutex> guard(op_mutex);
+        wr_mutex_time = ABT_get_wtime() - wr_mutex_time;
         /* cannot open read-only:
          - might want to data-sieve the I/O requests
          - might later read file */
@@ -78,7 +80,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         // than whatever the client has sent our way.  We will repeatedly bulk
         // transfer into this region. We'll need to keep track of how many file
         // offset/length pairs we have processed and how far into them we are.
-        // Code is going to start looking a lot like ROMIO...
+        // Code is going to start looking a lot like mochio...
         //
         // TODO: configurable how many segments at a time we can process
         // ?? is there a way to get all of them?
@@ -114,7 +116,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
             // - select a subset on the client-side bulk descriptor before
             //   associating it with a connection.
             while (file_idx < file_starts.size() && file_xfer < client_xfer) {
-                double write_time = ABT_get_wtime();
+                double pwrite_time = ABT_get_wtime();
 
                 // we might be able to only write a partial block
                 nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
@@ -122,7 +124,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
                 {
                     std::lock_guard<tl::mutex> guard(stats_mutex);
                     stats.server_write_calls++;
-                    stats.server_write_time = write_time = ABT_get_wtime();
+                    stats.server_write_time = ABT_get_wtime() - pwrite_time;
                     stats.bytes_written += nbytes;
                 }
 
@@ -146,6 +148,7 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         {
             std::lock_guard<tl::mutex> guard(stats_mutex);
             stats.server_write_time += ABT_get_wtime() - write_time;
+            stats.mutex_time += wr_mutex_time;
         }
         return 0;
     }
@@ -232,34 +235,34 @@ struct romio_svc_provider : public tl::provider<romio_svc_provider>
         return (fsync(fd));
     }
 
-    romio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
+    mochio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
-        : tl::provider<romio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
+        : tl::provider<mochio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
 
-            define("write", &romio_svc_provider::process_write, pool);
-            define("read", &romio_svc_provider::process_read, pool);
-            define("stat", &romio_svc_provider::stat);
-            define("delete", &romio_svc_provider::del);
-            define("flush", &romio_svc_provider::flush);
-            define("statistics", &romio_svc_provider::statistics);
+            define("write", &mochio_svc_provider::process_write, pool);
+            define("read", &mochio_svc_provider::process_read, pool);
+            define("stat", &mochio_svc_provider::stat);
+            define("delete", &mochio_svc_provider::del);
+            define("flush", &mochio_svc_provider::flush);
+            define("statistics", &mochio_svc_provider::statistics);
 
         }
-    ~romio_svc_provider() {
+    ~mochio_svc_provider() {
         wait_for_finalize();
     }
 };
 
-int romio_svc_provider_register(margo_instance_id mid,
+int mochio_svc_provider_register(margo_instance_id mid,
         abt_io_instance_id abtio,
         ABT_pool pool,
         ssg_group_id_t gid,
-        romio_svc_provider_t *romio_id)
+        mochio_svc_provider_t *mochio_id)
 {
     uint16_t provider_id = 0xABC;
     auto thallium_engine = new tl::engine(mid);
     auto thallium_pool = tl::pool(pool);
-    auto romio_provider = new romio_svc_provider(thallium_engine, abtio, gid, provider_id, thallium_pool);
-    *romio_id = romio_provider;
+    auto mochio_provider = new mochio_svc_provider(thallium_engine, abtio, gid, provider_id, thallium_pool);
+    *mochio_id = mochio_provider;
     return 0;
 }
 

@@ -8,8 +8,8 @@ configure
 compile
 install-sh
 missing
-src/romio-sds-config.h.in
-src/romio-sds-config.h.in~
+src/mochio-config.h.in
+src/mochio-config.h.in~
 config.guess
 config.sub
 cscope.files
