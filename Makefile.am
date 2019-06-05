@@ -8,15 +8,13 @@ bin_PROGRAMS = src/provider/mochio-server
 check_PROGRAMS = tests/simple
 
 src_provider_mochio_server_SOURCES = src/provider/server.c
-src_provider_mochio_server_LDFLAGS = -Llib
-src_provider_mochio_server_LDADD = -lmochio-provider ${LIBS}
+src_provider_mochio_server_LDADD = lib/libmochio-provider.la
 
 
 lib_LTLIBRARIES = lib/libmochio-client.la \
     lib/libmochio-provider.la
 
 lib_libmochio_client_la_SOURCES = src/client/mochio-client.cc
-
 lib_libmochio_provider_la_SOURCES = src/provider/mochio-provider.cc
 
 include_HEADERS = include/mochio.h \
@@ -30,8 +28,7 @@ tests_simple_SOURCES = tests/simple.c
 # hack/trick to force linking with C++
 # but all symbols are extern C so it should not be needed
 #nodist_EXTRA_tests_simple_SOURCES = dummy.cc
-tests_simple_DEPENDENCIES = lib/libmochio-client.la
-tests_simple_LDFLAGS = -Llib -lmochio-client
+tests_simple_LDADD = lib/libmochio-client.la
 
 
 pkgconfigdir = $(libdir)/pkgconfig
