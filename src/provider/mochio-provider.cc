@@ -13,12 +13,13 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include "mochio-provider.h"
 
+#include "common.h"
+
 #include "io_stats.h"
 namespace tl = thallium;
 
 #define BUFSIZE 1024
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 {
