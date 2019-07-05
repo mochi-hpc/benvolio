@@ -11,14 +11,41 @@
 #include <mutex>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
+
+#include "mochio-config.h"
 #include "mochio-provider.h"
+
 
 #include "common.h"
 
 #include "io_stats.h"
+#include "file_stats.h"
 namespace tl = thallium;
 
 #define BUFSIZE 1024
+
+#ifdef HAVE_LUSTRE_LUSTREAPI_H
+#include <lustre/lustreapi.h>
+
+static inline int maxint(int a, int b)
+{
+        return a > b ? a : b;
+}
+
+static void *alloc_lum()
+{
+    int v1, v3;
+
+    v1 = sizeof(struct lov_user_md_v1) +
+        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
+    v3 = sizeof(struct lov_user_md_v3) +
+        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
+
+    return malloc(maxint(v1, v3));
+}
+#endif
+
+
 
 
 struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
@@ -238,10 +265,22 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 
     }
 
-    ssize_t stat(const std::string &file)
+    struct file_stats getstats(const std::string &file)
     {
-        /* it should be possbile (one day) to set a block size on a per-file basis */
-        return blocksize;
+        struct file_stats ret;
+        struct stat statbuf;
+        stat(file.c_str(), &statbuf);
+        ret.blocksize = statbuf.st_blksize;
+
+#ifdef HAVE_LUSTRE_LUSTREAPI
+        struct lov_user_md *lov;
+        lov = alloc_lum();
+        llapi_file_get_stripe(file, lov);
+        ret.stripe_size =lov->lmm_stripe_size;
+        ret.stripe_count = lov->lmm_stripe_size;
+#endif
+
+        return ret;
     }
 
     struct io_stats statistics() {
@@ -265,7 +304,7 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 
             define("write", &mochio_svc_provider::process_write, pool);
             define("read", &mochio_svc_provider::process_read, pool);
-            define("stat", &mochio_svc_provider::stat);
+            define("stat", &mochio_svc_provider::getstats);
             define("delete", &mochio_svc_provider::del);
             define("flush", &mochio_svc_provider::flush);
             define("statistics", &mochio_svc_provider::statistics);

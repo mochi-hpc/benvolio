@@ -25,7 +25,8 @@ int main(int argc, char **argv)
 
     printf("stat:");
     mochio_stat(client, "dummy", &stats);
-    printf("got %ld from provider\n", stats.blocksize);
+    printf("got blocksize %ld stripe_count: %d stripe_size: %d from provider\n",
+            stats.blocksize, stats.stripe_count, stats.stripe_size);
 
     write_vec.iov_base = msg;
     write_vec.iov_len = strlen(msg) + 1;

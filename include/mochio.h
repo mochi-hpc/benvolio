@@ -60,6 +60,8 @@ ssize_t mochio_read (mochio_client_t client,
  */
 struct mochio_stats {
     ssize_t blocksize;
+    int32_t stripe_size;
+    int32_t stripe_count;
 };
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats);
 

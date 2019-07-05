@@ -5,6 +5,7 @@
 #include <ssg.h>
 #include <mpi.h>
 #include "io_stats.h"
+#include "file_stats.h"
 #include "calc-request.h"
 #include "access.h"
 #include <thallium/serialization/stl/string.hpp>
@@ -222,7 +223,11 @@ ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt
 
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats)
 {
+    struct file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
     stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
+    stats->blocksize = response.blocksize;
+    stats->stripe_size = response.stripe_size;
+    stats->stripe_count = response.stripe_count;
     return(1);
 }
 

@@ -25,7 +25,8 @@ include_HEADERS = include/mochio.h \
 noinst_HEADERS = include/io_stats.h \
 		 include/access.h \
 		 include/common.h \
-		 include/calc-request.h
+		 include/calc-request.h \
+		 include/file_stats.h
 
 TESTS = tests/simple
 

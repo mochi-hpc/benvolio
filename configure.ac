@@ -5,7 +5,7 @@ AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects silent-rules])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/client/mochio-client.cc])
-AC_CONFIG_HEADERS([src/mochio-config.h])
+AC_CONFIG_HEADERS([include/mochio-config.h])
 #
 
 # checks for programs
@@ -58,7 +58,9 @@ AC_LINK_IFELSE(
     [AC_MSG_RESULT([no])]
     [AC_MSG_ERROR([MPI compiler support currently required!])])
 
+AC_CHECK_LIB([lustreapi], [llapi_file_get_stripe])
 # checks for header files
+AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 

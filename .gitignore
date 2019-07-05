@@ -8,8 +8,8 @@ configure
 compile
 install-sh
 missing
-src/mochio-config.h.in
-src/mochio-config.h.in~
+include/mochio-config.h.in
+include/mochio-config.h.in~
 config.guess
 config.sub
 cscope.files
