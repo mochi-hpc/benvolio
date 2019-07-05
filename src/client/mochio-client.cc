@@ -5,6 +5,8 @@
 #include <ssg.h>
 #include <mpi.h>
 #include "io_stats.h"
+#include "calc-request.h"
+#include "access.h"
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
@@ -27,6 +29,10 @@ struct mochio_client {
     io_stats statistics;
 
     ssize_t blocksize=1024*4; // TODO: make more dynamic
+
+    int stripe_size;
+    int stripe_count;
+    int targets_used;
 };
 
 typedef enum {
@@ -34,7 +40,7 @@ typedef enum {
     MOCHIO_WRITE
 } io_kind;
 
-int  set_proto_from_addr(mochio_client_t client, char *addr_str)
+static int set_proto_from_addr(mochio_client_t client, char *addr_str)
 {
     int i;
     for (i=0; i< MAX_PROTO_LEN; i++) {
@@ -101,6 +107,10 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     mochio_stat(client, "/dev/null", &stats);
     client->blocksize = stats.blocksize;
 
+    // fake some lustre information for now until we add that to the RPC
+    client->stripe_size=4092;
+    client->stripe_count=54;
+
     free(addr_str);
 
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
@@ -128,33 +138,50 @@ int mochio_finalize(mochio_client_t client)
 }
 
 // use bulk transfer for the memory description
-// the lcoations in file we will just send over in a list
+// the locations in file we will just send over in a list
 // - could compress the file locations: they are likely to compress quite well
 // - not doing a whole lot of other data manipulation on the client
+// - do need to separate the memory and file lists into per-server buckets
+// -- possibly splitting up anything that falls on a server boundary
+// - are the file lists monotonically non-decreasing?  Any benefit if we relax that requirement?
 
 static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op,
         int64_t iovcnt, const struct iovec iovec_iov[],
         int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
 {
-    std::vector<std::pair<void *, std::size_t>> mem_vec;
-    for (int i=0; i< iovcnt; i++)
-        mem_vec.push_back(std::make_pair(iovec_iov[i].iov_base, iovec_iov[i].iov_len));
+    std::vector<struct access> my_reqs(client->targets.size());
+    size_t bytes_moved = 0;
 
-    std::vector<off_t> offset_vec;
-    std::vector<uint64_t> size_vec;
-    for (int i=0; i< file_count; i++) {
-        offset_vec.push_back(file_starts[i]);
-        size_vec.push_back(file_sizes[i]);
-    }
+    /* need to move this out of the I/O path.  Maybe 'mochio_stat' can cache
+     * these values on the client struct? */
+    compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
+
+    /* two steps:
+     * - first split up the memory and file descriptions into per-target
+     *   "bins".  Logic here will get fiddly: we might have to split up a memory
+     *   or file block across multiple targets.
+     * - second, for each target construct a bulk description for memory and
+     *   send the file offset/length pairs in its bin. */
+    calc_requests(iovcnt, iovec_iov, file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
+
 
     tl::bulk myBulk;
-    if (op == mochio_WRITE) {
-        myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_only);
-        return (client->write_op.on(client->targets[0])(myBulk, std::string(filename), offset_vec, size_vec));
-    } else {
-        myBulk = client->engine->expose(mem_vec, tl::bulk_mode::read_write);
-        return (client->read_op.on(client->targets[0])(myBulk, std::string(filename), offset_vec, size_vec));
+    auto mode = tl::bulk_mode::read_only;
+    auto rpc = client->write_op;
+    if (op == MOCHIO_READ) {
+        mode = tl::bulk_mode::write_only;
+        rpc = client->read_op;
     }
+    for (int i=0; i< client->targets.size(); i++) {
+        if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
+
+        myBulk = client->engine->expose(my_reqs[i].mem_vec, mode);
+        int ret = rpc.on(client->targets[i])(myBulk, std::string(filename), my_reqs[i].offset, my_reqs[i].len);
+        if (ret >= 0)
+            bytes_moved += ret;
+    }
+
+    return bytes_moved;
 }
 
 ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
