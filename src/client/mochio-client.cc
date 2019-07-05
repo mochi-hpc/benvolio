@@ -164,23 +164,29 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
      *   send the file offset/length pairs in its bin. */
     calc_requests(iovcnt, iovec_iov, file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
 
-
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
+
     if (op == MOCHIO_READ) {
         mode = tl::bulk_mode::write_only;
         rpc = client->read_op;
     }
+
+    std::vector<tl::async_response> responses;
     for (int i=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
 
         myBulk = client->engine->expose(my_reqs[i].mem_vec, mode);
-        int ret = rpc.on(client->targets[i])(myBulk, std::string(filename), my_reqs[i].offset, my_reqs[i].len);
+        responses.push_back(rpc.on(client->targets[i]).async(myBulk, std::string(filename), my_reqs[i].offset, my_reqs[i].len));
+
+    }
+
+    for (auto &r : responses) {
+        size_t ret = r.wait();
         if (ret >= 0)
             bytes_moved += ret;
     }
-
     return bytes_moved;
 }
 
