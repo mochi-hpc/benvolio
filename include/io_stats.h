@@ -40,6 +40,7 @@ class io_stats {
     double client_write_time; // time client spent in "mochio_write",
     int client_read_calls;    // number of tiems "mochio_read" called
     double client_read_time;  // time client spent in "mochio_read
+    double client_init_time; // how long does it take to set everything up
 
     io_stats & operator = (const io_stats &rhs);
 
@@ -60,7 +61,9 @@ class io_stats {
             << " client_write_calls " << client_write_calls
             << " client_write_time " << client_write_time
             << " client_read_calls " << client_read_calls
-            << " client_read_time " << client_read_time << std::endl;
+            << " client_read_time " << client_read_time
+            << " client_init_time " << client_init_time
+            << std::endl;
     }
 };
 

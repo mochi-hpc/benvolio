@@ -54,6 +54,7 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     int ret, i, nr_targets;
     struct mochio_client * client = (struct mochio_client *)calloc(1,sizeof(*client));
     char *ssg_group_buf;
+    double init_time = ABT_get_wtime();
 
 
     /* scalable read-and-broadcast of group information: only one process reads
@@ -101,6 +102,8 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     client->blocksize = stats.blocksize;
 
     free(addr_str);
+
+    client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
 }
 
