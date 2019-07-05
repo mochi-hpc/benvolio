@@ -30,8 +30,8 @@ struct mochio_client {
 };
 
 typedef enum {
-    mochio_READ,
-    mochio_WRITE
+    MOCHIO_READ,
+    MOCHIO_WRITE
 } io_kind;
 
 int  set_proto_from_addr(mochio_client_t client, char *addr_str)
@@ -161,7 +161,7 @@ ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcn
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
 
-    ret = mochio_io(client, filename, mochio_WRITE, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes);
 
     write_time = ABT_get_wtime() - write_time;
     client->statistics.client_write_time += write_time;
@@ -176,7 +176,7 @@ ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
 
-    ret = mochio_io(client, filename, mochio_READ, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_READ, iovcnt, iov, file_count, file_starts, file_sizes);
 
     read_time = ABT_get_wtime() - read_time;
     client->statistics.client_read_time += read_time;
