@@ -44,9 +44,8 @@ class io_stats {
 
     io_stats & operator = (const io_stats &rhs);
 
-    void print(void) {
-        std::cout << "SERVER: "
-            << "write_rpc_calls " << write_rpc_calls
+    void print_server() {
+        std::cout << "write_rpc_calls " << write_rpc_calls
             << " write_rpc_time " << write_rpc_time
             << " server_write_calls " << server_write_calls
             << " server_write_time " << server_write_time
@@ -57,13 +56,18 @@ class io_stats {
             << " server_read_time " << server_read_time
             << " bytes_read " << bytes_read
             << " mutex_time " << mutex_time << std::endl;
-        std::cout << "CLIENT: "
-            << " client_write_calls " << client_write_calls
+    }
+    void print_client() {
+        std::cout << "client_write_calls " << client_write_calls
             << " client_write_time " << client_write_time
             << " client_read_calls " << client_read_calls
             << " client_read_time " << client_read_time
             << " client_init_time " << client_init_time
             << std::endl;
+    }
+    void print(void) {
+        print_server();
+        print_client();
     }
 };
 

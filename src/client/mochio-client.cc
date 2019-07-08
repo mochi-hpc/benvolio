@@ -236,10 +236,11 @@ int mochio_statistics(mochio_client_t client)
     int ret =0;
     for (auto target : client->targets) {
         auto s = client->statistics_op.on(target)();
-
-        client->statistics = client->statistics + io_stats(s);
-        client->statistics.print();
+        std::cout << "SERVER: ";
+        io_stats(s).print_server();
     }
+    std::cout << "CLIENT: ";
+    client->statistics.print_client();
     return ret;
 }
 
