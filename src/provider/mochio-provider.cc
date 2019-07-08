@@ -12,7 +12,6 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
-#include "mochio-config.h"
 #include "mochio-provider.h"
 
 
@@ -20,32 +19,11 @@
 
 #include "io_stats.h"
 #include "file_stats.h"
+
+#include "lustre-utils.h"
 namespace tl = thallium;
 
 #define BUFSIZE 1024
-
-#ifdef HAVE_LUSTRE_LUSTREAPI_H
-#include <lustre/lustreapi.h>
-
-static inline int maxint(int a, int b)
-{
-        return a > b ? a : b;
-}
-
-static void *alloc_lum()
-{
-    int v1, v3;
-
-    v1 = sizeof(struct lov_user_md_v1) +
-        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
-    v3 = sizeof(struct lov_user_md_v3) +
-        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
-
-    return malloc(maxint(v1, v3));
-}
-#endif
-
-
 
 
 struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
@@ -272,13 +250,9 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         stat(file.c_str(), &statbuf);
         ret.blocksize = statbuf.st_blksize;
 
-#ifdef HAVE_LUSTRE_LUSTREAPI
-        struct lov_user_md *lov;
-        lov = alloc_lum();
-        llapi_file_get_stripe(file, lov);
-        ret.stripe_size =lov->lmm_stripe_size;
-        ret.stripe_count = lov->lmm_stripe_size;
-#endif
+	/* lustre header incompatible with c++ , so need to stuff the lustre
+	 * bits into a c-compiled object */
+	lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
 
         return ret;
     }
