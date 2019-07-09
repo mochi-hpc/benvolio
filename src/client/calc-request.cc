@@ -175,4 +175,5 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
             fileblk_used = 0;
         }
     }
+    return 0;
 }
