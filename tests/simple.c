@@ -57,22 +57,22 @@ int main(int argc, char **argv)
     }
 
     printf("Longer write\n");
-    int *bigbuf = malloc(4096);
-    for (int i=0; i< 1024; i++) bigbuf[i] = i;
+    int *bigbuf = malloc(15000);
+    for (int i=0; i< 15000/sizeof(int); i++) bigbuf[i] = i;
     write_vec.iov_base = bigbuf;
-    write_vec.iov_len = 4096;
+    write_vec.iov_len = 15000;
     offset = 20;
-    size = 4096;
+    size = 15000;
     mochio_write(client, filename, 1, &write_vec, 1, &offset, &size);
 
     printf("Longer read\n");
-    int *cmpbuf = malloc(4096);
+    int *cmpbuf = malloc(15000);
     read_vec.iov_base = cmpbuf;
-    read_vec.iov_len = 4096;
+    read_vec.iov_len = 15000;
     offset = 20;
-    size = 4096;
+    size = 15000;
     mochio_read(client, filename,1, &read_vec, 1, &offset, &size);
-    for (int i=0; i< 1024; i++) {
+    for (int i=0; i< 15000/sizeof(int); i++) {
         if (bigbuf[i] != cmpbuf[i]) {
             printf("Expected %d got %d\n", bigbuf[i], cmpbuf[i]);
             ret -= -1;
