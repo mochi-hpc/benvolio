@@ -66,5 +66,5 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # checks for library functions
 
-AC_CONFIG_FILES([Makefile maint/mochio.pc])
+AC_CONFIG_FILES([Makefile maint/mochio-client.pc maint/mochio-provider.pc])
 AC_OUTPUT

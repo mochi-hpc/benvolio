@@ -40,4 +40,5 @@ tests_simple_LDADD = lib/libmochio-client.la
 
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = maint/mochio.pc
+pkgconfig_DATA = maint/mochio-provider.pc \
+		 maint/mochio-client.pc
