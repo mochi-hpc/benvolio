@@ -103,14 +103,13 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     client->flush_op = client->engine->define("flush");
     client->statistics_op = client->engine->define("statistics");
 
-    struct mochio_stats stats;
-    // TODO: might want to be able to set distribution on a per-file basis
-    mochio_stat(client, "/dev/null", &stats);
-    client->blocksize = stats.blocksize;
 
-    // fake some lustre information for now until we add that to the RPC
-    client->stripe_size=4092;
-    client->stripe_count=54;
+    /* used to think the server would know something about how it wanted to
+     * distribute data, but now that's probably best handled on a per-file
+     * basis.  Pick some reasonable defaults, but don't talk to server. */
+    client->blocksize = 4096;
+    client->stripe_size= 4096;
+    client->stripe_count=1;
 
     free(addr_str);
 
@@ -153,8 +152,9 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     std::vector<struct access> my_reqs(client->targets.size());
     size_t bytes_moved = 0;
 
-    /* need to move this out of the I/O path.  Maybe 'mochio_stat' can cache
-     * these values on the client struct? */
+    /* How expensive is this? do we need to move this out of the I/O path?
+     * Maybe 'mochio_stat' can cache these values on the client struct? */
+    client->targets_used = client->targets.size();
     compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
 
     /* two steps:
@@ -224,10 +224,15 @@ ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats)
 {
     struct file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
-    stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
+
     stats->blocksize = response.blocksize;
     stats->stripe_size = response.stripe_size;
     stats->stripe_count = response.stripe_count;
+
+    /* also update client information.  This should probably be a 'map' keyed on file name */
+    client->blocksize = response.blocksize;
+    client->stripe_size = response.stripe_size;
+    client->stripe_count = response.stripe_count;
     return(1);
 }
 
