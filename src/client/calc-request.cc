@@ -159,6 +159,10 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
         my_reqs[target].mem_vec.push_back(std::make_pair(addr, len));
         my_reqs[target].offset.push_back(offset);
         my_reqs[target].len.push_back(len);
+#ifdef DUMP_REQUESTS
+	printf("    target: %d address: %p len %lld offset: %ld\n",
+		target, addr, len, offset);
+#endif
 
         /* a bunch of bookeeping for the next time through: do we need to work
          * on the next memory or file block? how much of current block is left
