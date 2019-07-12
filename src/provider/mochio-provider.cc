@@ -2,6 +2,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <libgen.h>
+#include <string.h>
 
 #include <margo.h>
 #include <thallium.hpp>
@@ -245,10 +248,20 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 
     struct file_stats getstats(const std::string &file)
     {
+	int rc;
         struct file_stats ret;
         struct stat statbuf;
-        stat(file.c_str(), &statbuf);
-        ret.blocksize = statbuf.st_blksize;
+        rc = stat(file.c_str(), &statbuf);
+	if (rc == -1 && errno == ENOENT) {
+	    char * dup = strdup(file.c_str());
+	    rc = stat(dirname(dup), &statbuf);
+	    free(dup);
+	}
+	if (rc == 0)
+	    ret.blocksize = statbuf.st_blksize;
+	else
+	    /* some kind of error in stat. make a reasonable guess */
+	    ret.blocksize = 4096;
 
 	/* lustre header incompatible with c++ , so need to stuff the lustre
 	 * bits into a c-compiled object */

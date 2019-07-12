@@ -1,6 +1,9 @@
 #include "mochio-config.h"
 
 #include <stdlib.h>
+#include <errno.h>
+#include <libgen.h>
+
 
 #include "common.h"
 
@@ -41,28 +44,25 @@ int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *strip
      * - maybe the file is not lustre? */
     ret = llapi_file_get_stripe(filename, lov);
     switch(errno) {
+	char *dup, *parent;
 	case ENOENT:
-	    char * dup = strdup(filename);
-	    char * parent = dirname(dup);
-	    ret = llapi_file_get_stripe(filename, lov);
+	    dup = strdup(filename);
+	    parent = dirname(dup);
+	    ret = llapi_file_get_stripe(parent, lov);
 	    /* if still enoent, we give up */
+	    free(dup);
 	    if (errno ==  ENOENT)
 		goto fn_exit;
+	    break;
 	case ENOTTY:
 	    ret = 0;
 	    goto fn_exit;
 	default:
-	    perror("Unable to get Lustre stripe info");
-    }
-    if (llapi_file_get_stripe(filename, lov) != 0) {
-	perror("Unable to get Lustre stripe info");
-	return -1;
+	    if (ret != 0) perror("Unable to get Lustre stripe info");
     };
     *stripe_size = lov->lmm_stripe_size;
     *stripe_count = lov->lmm_stripe_count;
 
-    /* hack for demo */
-    *stripe_size = 4096;
 #endif
 
 fn_exit:
