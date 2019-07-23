@@ -87,7 +87,7 @@ int calc_aggregator(off_t off, uint64_t * len,
         int stripe_size, int server_count)
 {
     int rank_index, rank;
-    int64_t avail_bytes;
+    uint64_t avail_bytes;
     int avail_cb_nodes = server_count;
 
     /* Produce the stripe-contiguous pattern for Lustre */
@@ -174,7 +174,7 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
             memblk++;
             memblk_used = 0;
         }
-        if ((int64_t)fileblk_used >= file_sizes[fileblk]) {
+        if (fileblk_used >= file_sizes[fileblk]) {
             fileblk++;
             fileblk_used = 0;
         }

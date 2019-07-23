@@ -175,7 +175,7 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     }
 
     std::vector<tl::async_response> responses;
-    for (int i=0; i< client->targets.size(); i++) {
+    for (unsigned int i=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
 
         myBulk = client->engine->expose(my_reqs[i].mem_vec, mode);
