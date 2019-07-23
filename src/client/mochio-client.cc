@@ -146,8 +146,8 @@ int mochio_finalize(mochio_client_t client)
 // - are the file lists monotonically non-decreasing?  Any benefit if we relax that requirement?
 
 static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op,
-        int64_t iovcnt, const struct iovec iovec_iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+        const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     std::vector<struct access> my_reqs(client->targets.size());
     size_t bytes_moved = 0;
@@ -163,7 +163,8 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
      *   or file block across multiple targets.
      * - second, for each target construct a bulk description for memory and
      *   send the file offset/length pairs in its bin. */
-    calc_requests(iovcnt, iovec_iov, file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
+    calc_requests(mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
 
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
@@ -191,14 +192,16 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     return bytes_moved;
 }
 
-ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+ssize_t mochio_write(mochio_client_t client, const char *filename,
+        const int64_t mem_count, const char * mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     ssize_t ret;
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_WRITE, mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes);
 
     write_time = ABT_get_wtime() - write_time;
     client->statistics.client_write_time += write_time;
@@ -206,14 +209,16 @@ ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcn
     return ret;
 }
 
-ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+ssize_t mochio_read(mochio_client_t client, const char *filename,
+        const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     ssize_t ret;
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_READ, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_READ, mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes);
 
     read_time = ABT_get_wtime() - read_time;
     client->statistics.client_read_time += read_time;
