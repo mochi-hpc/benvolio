@@ -64,9 +64,11 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
         double write_time = ABT_get_wtime();
+
         /* What else can we do with an empty memory description or file
          description other than return immediately? */
-        if (client_bulk.size() == 0 ||
+        if (client_bulk.is_null() ||
+                client_bulk.size() == 0 ||
                 file_starts.size() == 0) {
             req.respond(0);
             write_time = ABT_get_wtime() - write_time;
@@ -116,7 +118,13 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             // the '>>' operator moves bytes from one bulk descriptor to the
             // other, moving the smaller of the two
             file_xfer = 0;
+            try {
             client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) >> local;
+            } catch (std::exception err) {
+                std::cerr <<"Unable to bulk xfer at "
+                    << client_cursor << " size: "
+                    << client_bulk.size()-client_cursor << std::endl;
+            }
             // operator overloading might make this a little hard to parse at first.
             // - >> and << do a bulk transfer between bulk endpoints, transfering
             //   the smallest  of the two
