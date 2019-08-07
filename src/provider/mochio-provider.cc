@@ -91,7 +91,7 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         // than whatever the client has sent our way.  We will repeatedly bulk
         // transfer into this region. We'll need to keep track of how many file
         // offset/length pairs we have processed and how far into them we are.
-        // Code is going to start looking a lot like mochio...
+        // Code is going to start looking a lot like ROMIO...
         //
         // TODO: configurable how many segments at a time we can process
         // ?? is there a way to get all of them?
@@ -305,6 +305,18 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             define("statistics", &mochio_svc_provider::statistics);
 
         }
+    void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
+    {
+        std::cout << "SERVER_REQ_DUMP:" << extra << "\n" << "   bulk size:"<< client_bulk.size() << "\n";
+        std::cout << "  file offsets: " << file_starts.size() << " ";
+        for (auto x : file_starts)
+            std::cout<< x << " ";
+        std::cout << "\n   file lengths: ";
+        for (auto x: file_sizes)
+            std::cout << x << " " ;
+        std::cout << std::endl;
+    }
+
     ~mochio_svc_provider() {
         wait_for_finalize();
     }
