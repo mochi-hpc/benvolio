@@ -63,7 +63,12 @@ struct mochio_stats {
 };
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats);
 
-int mochio_statistics(mochio_client_t client);
+/**
+ * if `show_server` set, statistics will also include information from every remote target
+ * Use case: at end of MPI job, every process will want to show client statistis
+ * but only one process will want to show the server information
+ */
+int mochio_statistics(mochio_client_t client, int show_server);
 
 /* flush: request all cached data written to disk */
 int mochio_flush(mochio_client_t client, const char *filename);

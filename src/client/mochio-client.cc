@@ -241,13 +241,15 @@ int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stat
     return(1);
 }
 
-int mochio_statistics(mochio_client_t client)
+int mochio_statistics(mochio_client_t client, int show_server)
 {
     int ret =0;
-    for (auto target : client->targets) {
-        auto s = client->statistics_op.on(target)();
-        std::cout << "SERVER: ";
-        io_stats(s).print_server();
+    if (show_server) {
+        for (auto target : client->targets) {
+            auto s = client->statistics_op.on(target)();
+            std::cout << "SERVER: ";
+            io_stats(s).print_server();
+        }
     }
     std::cout << "CLIENT: ";
     client->statistics.print_client();

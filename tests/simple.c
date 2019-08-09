@@ -84,7 +84,7 @@ int main(int argc, char **argv)
     free(cmpbuf);
 
 #if VERBOSE
-    mochio_statistics(client);
+    mochio_statistics(client, 1);
 #endif
 
     mochio_finalize(client);
