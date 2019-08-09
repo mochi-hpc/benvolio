@@ -141,6 +141,14 @@ int calc_requests(int mem_count, const char *mem_addresses[], const uint64_t mem
         char *addr;
         off_t offset;
 
+        if (mem_sizes[memblk] == 0) {
+            memblk++;
+            continue;
+        }
+        if (file_sizes[fileblk] == 0) {
+            fileblk++;
+            continue;
+        }
         // for each file block we might split it into smaller pieces based on
         // - which target handles this offset and how much of the data goes there
         // - a memory block that might be smaller still
