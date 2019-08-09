@@ -62,11 +62,13 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     struct mochio_client * client = (struct mochio_client *)calloc(1,sizeof(*client));
     char *ssg_group_buf;
     double init_time = ABT_get_wtime();
+    MPI_Comm dupcomm;
 
 
     /* scalable read-and-broadcast of group information: only one process reads
      * cfg from file system.  These routines can all be called before ssg_init */
-    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_dup(comm, &dupcomm);
+    MPI_Comm_rank(dupcomm, &rank);
     uint64_t ssg_serialize_size;
     ssg_group_buf = (char *) malloc(1024); // how big do these get?
     if (rank == 0) {
@@ -74,8 +76,9 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
         assert (ret == SSG_SUCCESS);
         ssg_group_id_serialize(client->gid, &ssg_group_buf, &ssg_serialize_size);
     }
-    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, comm);
-    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, comm);
+    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, dupcomm);
+    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, dupcomm);
+    MPI_Comm_free(&dupcomm);
     ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &(client->gid));
     addr_str = ssg_group_id_get_addr_str(client->gid);
     if (set_proto_from_addr(client, addr_str) != 0) return NULL;
