@@ -115,6 +115,7 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     client->stripe_count=1;
 
     free(addr_str);
+    free(ssg_group_buf);
 
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
