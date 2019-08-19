@@ -66,5 +66,7 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # checks for library functions
 
-AC_CONFIG_FILES([Makefile maint/mochio.pc])
+AM_EXTRA_RECURSIVE_TARGETS([tests])
+
+AC_CONFIG_FILES([Makefile tests/Makefile maint/mochio.pc])
 AC_OUTPUT

@@ -5,12 +5,8 @@ AM_CPPFLAGS = -I$(top_srcdir)/include
 
 bin_PROGRAMS = src/provider/mochio-server
 
-check_PROGRAMS = tests/simple \
-                 tests/strided
-
 src_provider_mochio_server_SOURCES = src/provider/server.c
 src_provider_mochio_server_LDADD = lib/libmochio-provider.la
-
 
 lib_LTLIBRARIES = lib/libmochio-client.la \
     lib/libmochio-provider.la
@@ -29,16 +25,15 @@ noinst_HEADERS = include/io_stats.h \
 		 include/calc-request.h \
 		 include/file_stats.h
 
-TESTS = ${check_PROGRAMS}
+SUBDIRS = tests
 
-tests_simple_SOURCES = tests/simple.c
-tests_strided_SOURCES = tests/strided.c
+#tests_simple_SOURCES = tests/simple.c
+#tests_strided_SOURCES = tests/strided.c
 # hack/trick to force linking with C++
 # but all symbols are extern C so it should not be needed
 #nodist_EXTRA_tests_simple_SOURCES = dummy.cc
-tests_simple_LDADD = lib/libmochio-client.la
-tests_strided_LDADD = lib/libmochio-client.la
-
+#tests_simple_LDADD = lib/libmochio-client.la
+#tests_strided_LDADD = lib/libmochio-client.la
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = maint/mochio.pc
