@@ -27,9 +27,6 @@ noinst_HEADERS = include/io_stats.h \
 		 include/file_stats.h \
 		 include/lustre-utils.h
 
-TESTS = tests/simple \
-	tests/null
-
 SUBDIRS = tests
 
 #tests_simple_SOURCES = tests/simple.c

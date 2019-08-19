@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     free(buf);
 
 #if VERBOSE
-    mochio_statistics(client);
+    mochio_statistics(client, 1);
 #endif
 
     mochio_finalize(client);
