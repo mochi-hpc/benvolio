@@ -2,6 +2,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <libgen.h>
+#include <string.h>
 
 #include <margo.h>
 #include <thallium.hpp>
@@ -12,7 +15,6 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
-#include "mochio-config.h"
 #include "mochio-provider.h"
 
 
@@ -20,32 +22,11 @@
 
 #include "io_stats.h"
 #include "file_stats.h"
+
+#include "lustre-utils.h"
 namespace tl = thallium;
 
 #define BUFSIZE 1024
-
-#ifdef HAVE_LUSTRE_LUSTREAPI_H
-#include <lustre/lustreapi.h>
-
-static inline int maxint(int a, int b)
-{
-        return a > b ? a : b;
-}
-
-static void *alloc_lum()
-{
-    int v1, v3;
-
-    v1 = sizeof(struct lov_user_md_v1) +
-        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
-    v3 = sizeof(struct lov_user_md_v3) +
-        LOV_MAX_STRIPE_COUNT * sizeof(struct lov_user_ost_data_v1);
-
-    return malloc(maxint(v1, v3));
-}
-#endif
-
-
 
 
 struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
@@ -83,9 +64,11 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
     {
         double write_time = ABT_get_wtime();
+
         /* What else can we do with an empty memory description or file
          description other than return immediately? */
-        if (client_bulk.size() == 0 ||
+        if (client_bulk.is_null() ||
+                client_bulk.size() == 0 ||
                 file_starts.size() == 0) {
             req.respond(0);
             write_time = ABT_get_wtime() - write_time;
@@ -108,7 +91,7 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         // than whatever the client has sent our way.  We will repeatedly bulk
         // transfer into this region. We'll need to keep track of how many file
         // offset/length pairs we have processed and how far into them we are.
-        // Code is going to start looking a lot like mochio...
+        // Code is going to start looking a lot like ROMIO...
         //
         // TODO: configurable how many segments at a time we can process
         // ?? is there a way to get all of them?
@@ -135,7 +118,13 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             // the '>>' operator moves bytes from one bulk descriptor to the
             // other, moving the smaller of the two
             file_xfer = 0;
+            try {
             client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) >> local;
+            } catch (std::exception err) {
+                std::cerr <<"Unable to bulk xfer at "
+                    << client_cursor << " size: "
+                    << client_bulk.size()-client_cursor << std::endl;
+            }
             // operator overloading might make this a little hard to parse at first.
             // - >> and << do a bulk transfer between bulk endpoints, transfering
             //   the smallest  of the two
@@ -267,18 +256,24 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
 
     struct file_stats getstats(const std::string &file)
     {
+	int rc;
         struct file_stats ret;
         struct stat statbuf;
-        stat(file.c_str(), &statbuf);
-        ret.blocksize = statbuf.st_blksize;
+        rc = stat(file.c_str(), &statbuf);
+	if (rc == -1 && errno == ENOENT) {
+	    char * dup = strdup(file.c_str());
+	    rc = stat(dirname(dup), &statbuf);
+	    free(dup);
+	}
+	if (rc == 0)
+	    ret.blocksize = statbuf.st_blksize;
+	else
+	    /* some kind of error in stat. make a reasonable guess */
+	    ret.blocksize = 4096;
 
-#ifdef HAVE_LUSTRE_LUSTREAPI
-        struct lov_user_md *lov;
-        lov = alloc_lum();
-        llapi_file_get_stripe(file, lov);
-        ret.stripe_size =lov->lmm_stripe_size;
-        ret.stripe_count = lov->lmm_stripe_size;
-#endif
+	/* lustre header incompatible with c++ , so need to stuff the lustre
+	 * bits into a c-compiled object */
+	lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
 
         return ret;
     }
@@ -310,6 +305,18 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
             define("statistics", &mochio_svc_provider::statistics);
 
         }
+    void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
+    {
+        std::cout << "SERVER_REQ_DUMP:" << extra << "\n" << "   bulk size:"<< client_bulk.size() << "\n";
+        std::cout << "  file offsets: " << file_starts.size() << " ";
+        for (auto x : file_starts)
+            std::cout<< x << " ";
+        std::cout << "\n   file lengths: ";
+        for (auto x: file_sizes)
+            std::cout << x << " " ;
+        std::cout << std::endl;
+    }
+
     ~mochio_svc_provider() {
         wait_for_finalize();
     }
