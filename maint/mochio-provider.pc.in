@@ -1,0 +1,12 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: MOCHIO
+Description: A mochi service for I/O: library for provider-side
+URL: https://xgitlab.cels.anl.gov/sds/mochio
+Version: 0.0.1
+Requires: thallium abt-io margo
+Libs: -L${libdir} -lmochio-provider
+Cflags: -I${includedir}

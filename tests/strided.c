@@ -16,7 +16,8 @@ int main(int argc, char **argv) {
     int rank, np;
     mochio_client_t client=NULL;
     struct mochio_stats stats;
-    struct iovec write_vec, read_vec;
+    const char *write_address, *read_address;
+    uint64_t write_size, read_size;
     unsigned char *buf;
     off_t offsets[NSTRIDE];
     uint64_t lens[NSTRIDE];
@@ -54,11 +55,11 @@ int main(int argc, char **argv) {
         lens[i] = SSIZE;
     }
 
-    write_vec.iov_base = buf;
-    write_vec.iov_len = NSTRIDE * SSIZE;
+    write_address = buf;
+    write_size = NSTRIDE * SSIZE;
 
     printf("writing\n");
-    mochio_write(client, filename, 1, &write_vec, NSTRIDE, offsets, lens);
+    mochio_write(client, filename, 1, &write_address, &write_size, NSTRIDE, offsets, lens);
 
     printf("flushing\n");
     mochio_flush(client, filename);
@@ -72,11 +73,11 @@ int main(int argc, char **argv) {
     offsets[0] = rank * NSTRIDE * SSIZE;
     lens[0] = NSTRIDE * SSIZE;
 
-    read_vec.iov_base = buf;
-    read_vec.iov_len = NSTRIDE * SSIZE;
+    read_address = buf;
+    read_size = NSTRIDE * SSIZE;
 
     printf("reading\n");
-    mochio_read(client, filename, 1, &read_vec, 1, offsets, lens);
+    mochio_read(client, filename, 1, &read_address, &read_size, 1, offsets, lens);
     for(i = 0; i < NSTRIDE * SSIZE; i++){
         j = (i / SSIZE) % np + 1;
         if (buf[i] != j){
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
     free(buf);
 
 #if VERBOSE
-    mochio_statistics(client);
+    mochio_statistics(client, 1);
 #endif
 
     mochio_finalize(client);
