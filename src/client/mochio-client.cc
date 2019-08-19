@@ -62,11 +62,13 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     struct mochio_client * client = (struct mochio_client *)calloc(1,sizeof(*client));
     char *ssg_group_buf;
     double init_time = ABT_get_wtime();
+    MPI_Comm dupcomm;
 
 
     /* scalable read-and-broadcast of group information: only one process reads
      * cfg from file system.  These routines can all be called before ssg_init */
-    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_dup(comm, &dupcomm);
+    MPI_Comm_rank(dupcomm, &rank);
     uint64_t ssg_serialize_size;
     ssg_group_buf = (char *) malloc(1024); // how big do these get?
     if (rank == 0) {
@@ -74,8 +76,9 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
         assert (ret == SSG_SUCCESS);
         ssg_group_id_serialize(client->gid, &ssg_group_buf, &ssg_serialize_size);
     }
-    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, comm);
-    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, comm);
+    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, dupcomm);
+    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, dupcomm);
+    MPI_Comm_free(&dupcomm);
     ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &(client->gid));
     addr_str = ssg_group_id_get_addr_str(client->gid);
     if (set_proto_from_addr(client, addr_str) != 0) return NULL;
@@ -103,16 +106,16 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
     client->flush_op = client->engine->define("flush");
     client->statistics_op = client->engine->define("statistics");
 
-    struct mochio_stats stats;
-    // TODO: might want to be able to set distribution on a per-file basis
-    mochio_stat(client, "/dev/null", &stats);
-    client->blocksize = stats.blocksize;
 
-    // fake some lustre information for now until we add that to the RPC
-    client->stripe_size=4092;
-    client->stripe_count=54;
+    /* used to think the server would know something about how it wanted to
+     * distribute data, but now that's probably best handled on a per-file
+     * basis.  Pick some reasonable defaults, but don't talk to server. */
+    client->blocksize = 4096;
+    client->stripe_size= 4096;
+    client->stripe_count=1;
 
     free(addr_str);
+    free(ssg_group_buf);
 
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
@@ -147,14 +150,15 @@ int mochio_finalize(mochio_client_t client)
 // - are the file lists monotonically non-decreasing?  Any benefit if we relax that requirement?
 
 static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op,
-        int64_t iovcnt, const struct iovec iovec_iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+        const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     std::vector<struct access> my_reqs(client->targets.size());
     size_t bytes_moved = 0;
 
-    /* need to move this out of the I/O path.  Maybe 'mochio_stat' can cache
-     * these values on the client struct? */
+    /* How expensive is this? do we need to move this out of the I/O path?
+     * Maybe 'mochio_stat' can cache these values on the client struct? */
+    client->targets_used = client->targets.size();
     compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
 
     /* two steps:
@@ -163,7 +167,8 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
      *   or file block across multiple targets.
      * - second, for each target construct a bulk description for memory and
      *   send the file offset/length pairs in its bin. */
-    calc_requests(iovcnt, iovec_iov, file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
+    calc_requests(mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
 
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
@@ -175,7 +180,7 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     }
 
     std::vector<tl::async_response> responses;
-    for (int i=0; i< client->targets.size(); i++) {
+    for (unsigned int i=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
 
         myBulk = client->engine->expose(my_reqs[i].mem_vec, mode);
@@ -191,14 +196,16 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     return bytes_moved;
 }
 
-ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+ssize_t mochio_write(mochio_client_t client, const char *filename,
+        const int64_t mem_count, const char * mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     ssize_t ret;
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_WRITE, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_WRITE, mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes);
 
     write_time = ABT_get_wtime() - write_time;
     client->statistics.client_write_time += write_time;
@@ -206,14 +213,16 @@ ssize_t mochio_write(mochio_client_t client, const char *filename, int64_t iovcn
     return ret;
 }
 
-ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt, const struct iovec iov[],
-        int64_t file_count, const off_t file_starts[], uint64_t file_sizes[])
+ssize_t mochio_read(mochio_client_t client, const char *filename,
+        const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
+        const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     ssize_t ret;
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_READ, iovcnt, iov, file_count, file_starts, file_sizes);
+    ret = mochio_io(client, filename, MOCHIO_READ, mem_count, mem_addresses, mem_sizes,
+            file_count, file_starts, file_sizes);
 
     read_time = ABT_get_wtime() - read_time;
     client->statistics.client_read_time += read_time;
@@ -224,20 +233,27 @@ ssize_t mochio_read(mochio_client_t client, const char *filename, int64_t iovcnt
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats)
 {
     struct file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
-    stats->blocksize = client->stat_op.on(client->targets[0])(std::string(filename) );
+
     stats->blocksize = response.blocksize;
     stats->stripe_size = response.stripe_size;
     stats->stripe_count = response.stripe_count;
+
+    /* also update client information.  This should probably be a 'map' keyed on file name */
+    client->blocksize = response.blocksize;
+    client->stripe_size = response.stripe_size;
+    client->stripe_count = response.stripe_count;
     return(1);
 }
 
-int mochio_statistics(mochio_client_t client)
+int mochio_statistics(mochio_client_t client, int show_server)
 {
     int ret =0;
-    for (auto target : client->targets) {
-        auto s = client->statistics_op.on(target)();
-        std::cout << "SERVER: ";
-        io_stats(s).print_server();
+    if (show_server) {
+        for (auto target : client->targets) {
+            auto s = client->statistics_op.on(target)();
+            std::cout << "SERVER: ";
+            io_stats(s).print_server();
+        }
     }
     std::cout << "CLIENT: ";
     client->statistics.print_client();

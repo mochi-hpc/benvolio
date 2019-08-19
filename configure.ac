@@ -68,5 +68,5 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 AM_EXTRA_RECURSIVE_TARGETS([tests])
 
-AC_CONFIG_FILES([Makefile tests/Makefile maint/mochio.pc])
+AC_CONFIG_FILES([Makefile tests/Makefile maint/mochio-client.pc maint/mochio-provider.pc])
 AC_OUTPUT

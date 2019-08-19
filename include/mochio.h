@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 #include <unistd.h>
-#include <sys/uio.h>
 #include <aio.h>
 #include <mpi.h>
 
@@ -27,25 +26,24 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * ssg_statefile);
 int mochio_finalize(mochio_client_t client);
 
 /* stateless api: always pass in a file name? */
-/* an iovec describes memory.  less well suited for I/O
- * - Better to have four arrays (memory offset, mem length, file offset, file length)
- * - or use a 'struct iovec' for the memory parts? */
 
 ssize_t mochio_write(mochio_client_t client,
         const char *file,
-        int64_t iovcnt,
-        const struct iovec iov[],
-        int64_t file_count,
+        const int64_t mem_count,
+        const char *mem_addresses[],
+        const uint64_t mem_sizes[],
+        const int64_t file_count,
         const off_t file_starts[],
-        uint64_t file_sizes[]);
+        const uint64_t file_sizes[]);
 
 ssize_t mochio_read (mochio_client_t client,
         const char *file,
-        int64_t iovcnt,
-        const struct iovec iov[],
-        int64_t file_count,
+        const int64_t mem_count,
+        const char *mem_addresses[],
+        const uint64_t mem_sizes[],
+        const int64_t file_count,
         const off_t file_starts[],
-        uint64_t file_sizes[]);
+        const uint64_t file_sizes[]);
 
 
 /*
@@ -65,7 +63,12 @@ struct mochio_stats {
 };
 int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats);
 
-int mochio_statistics(mochio_client_t client);
+/**
+ * if `show_server` set, statistics will also include information from every remote target
+ * Use case: at end of MPI job, every process will want to show client statistis
+ * but only one process will want to show the server information
+ */
+int mochio_statistics(mochio_client_t client, int show_server);
 
 /* flush: request all cached data written to disk */
 int mochio_flush(mochio_client_t client, const char *filename);

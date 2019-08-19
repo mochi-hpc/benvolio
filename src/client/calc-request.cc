@@ -11,7 +11,6 @@
 
 #include "common.h"
 #include "access.h"
-#include "sys/uio.h"
 #include "calc-request.h"
 
 
@@ -87,7 +86,7 @@ int calc_aggregator(off_t off, uint64_t * len,
         int stripe_size, int server_count)
 {
     int rank_index, rank;
-    int64_t avail_bytes;
+    uint64_t avail_bytes;
     int avail_cb_nodes = server_count;
 
     /* Produce the stripe-contiguous pattern for Lustre */
@@ -126,7 +125,7 @@ int calc_aggregator(off_t off, uint64_t * len,
  * returns: 0 on sucess, non-zero on failure
  *
  **/
-int calc_requests(int iovec_count, const struct iovec *memvec,
+int calc_requests(int mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         int file_count, const off_t *file_starts, const uint64_t *file_sizes,
         int stripe_size, int targets_used,
         std::vector<struct access> & my_reqs)
@@ -136,12 +135,20 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
     // how much of a memory/file block is left to process
     u_int64_t memblk_used=0, fileblk_used=0;
 
-    while (memblk < iovec_count && fileblk < file_count) {
+    while (memblk < mem_count && fileblk < file_count) {
         uint64_t len;
         int target;
         char *addr;
         off_t offset;
 
+        if (mem_sizes[memblk] == 0) {
+            memblk++;
+            continue;
+        }
+        if (file_sizes[fileblk] == 0) {
+            fileblk++;
+            continue;
+        }
         // for each file block we might split it into smaller pieces based on
         // - which target handles this offset and how much of the data goes there
         // - a memory block that might be smaller still
@@ -152,13 +159,17 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
 
         // may have to further reduce 'len' if the corresponding memory block
         // is smaller
-        len = MIN(memvec[memblk].iov_len - memblk_used, len);
-        addr = (char *)memvec[memblk].iov_base + memblk_used;
+        len = MIN(mem_sizes[memblk] - memblk_used, len);
+        addr = (char *)mem_addresses[memblk] + memblk_used;
         offset = file_starts[fileblk] + fileblk_used;
 
         my_reqs[target].mem_vec.push_back(std::make_pair(addr, len));
         my_reqs[target].offset.push_back(offset);
         my_reqs[target].len.push_back(len);
+#ifdef DUMP_REQUESTS
+	printf("    target: %d address: %p len %lld offset: %ld\n",
+		target, addr, len, offset);
+#endif
 
         /* a bunch of bookeeping for the next time through: do we need to work
          * on the next memory or file block? how much of current block is left
@@ -166,13 +177,14 @@ int calc_requests(int iovec_count, const struct iovec *memvec,
 
         memblk_used += len;
         fileblk_used += len;
-        if (memblk_used >= memvec[memblk].iov_len) {
+        if (memblk_used >= mem_sizes[memblk]) {
             memblk++;
             memblk_used = 0;
         }
-        if ((int64_t)fileblk_used >= file_sizes[fileblk]) {
+        if (fileblk_used >= file_sizes[fileblk]) {
             fileblk++;
             fileblk_used = 0;
         }
     }
+    return 0;
 }

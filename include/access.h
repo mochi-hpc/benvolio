@@ -21,15 +21,15 @@ struct access {
     std::vector<uint64_t> len;
 
     void print() {
-        std::cout << "mem: ";
+        std::cout << "    mem: ";
         for (auto x: mem_vec)
             std::cout << x.first << " " << x.second << " ";
         std::cout << std::endl;
-        std::cout << "file offset: ";
+        std::cout << "    file offset: ";
         for (auto x: offset)
             std::cout << x << " ";
         std::cout << std::endl;
-        std::cout << "file length: ";
+        std::cout << "    file length: ";
         for (auto x: len)
             std::cout << x << " ";
         std::cout << std::endl;

@@ -13,7 +13,8 @@ AM_CPPFLAGS = -I$(top_srcdir)/include
 LDADD  = $(top_srcdir)/lib/libmochio-client.la
 
 check_PROGRAMS = simple \
-	         strided
+	             strided \
+                 null
 
 EXTRA_DIST = # wrap_runs.sh parallel_run.sh
 

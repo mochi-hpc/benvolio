@@ -31,7 +31,7 @@ void compute_striping_info(int stripe_size, int stripe_count, int *server_count,
  * returns: 0 on sucess, non-zero on failure
  *
  **/
-int calc_requests(int iovec_count, const struct iovec *memvec,
+int calc_requests(int mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         int file_count, const off_t *file_starts, const uint64_t *file_sizes,
         int stripe_size, int targets_used,
         std::vector<struct access> & my_reqs);
