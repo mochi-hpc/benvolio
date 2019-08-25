@@ -14,7 +14,8 @@ LDADD  = $(top_srcdir)/lib/libmochio-client.la
 
 check_PROGRAMS = simple \
 	             strided \
-                 null
+                 null \
+                 overlap
 
 EXTRA_DIST = # wrap_runs.sh parallel_run.sh
 
