@@ -1,5 +1,21 @@
 # Running on Cray
 
+## building
+
+Intel compiler might not support all the C++14 or argobots atomics features of
+our stack, so use the gnu compiler with
+
+    module swap PrgEnv-intel PrgEnv-gnu
+
+Some of our packages have both static and shared libs, others have just shared.
+To get Cray toolchain to only build and link with shared libs, I had to
+configure like this:
+
+    configure CFLAGS=-dynamic CC=cc CXX=CC --host x86-linux-gnu
+
+Otherwise, configure will fail to find the Mercury libraries and the configure
+test for ssg features will fail.
+
 Argonne's Theta sysem is a Cray XC40.  It uses 'aprun' to launch jobs.
 
 As long as you have requested enough nodes, you can launch as many 'aprun'
