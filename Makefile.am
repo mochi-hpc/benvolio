@@ -27,16 +27,19 @@ noinst_HEADERS = include/io_stats.h \
 		 include/file_stats.h \
 		 include/lustre-utils.h
 
-SUBDIRS = tests
-
-#tests_simple_SOURCES = tests/simple.c
-#tests_strided_SOURCES = tests/strided.c
-# hack/trick to force linking with C++
-# but all symbols are extern C so it should not be needed
-#nodist_EXTRA_tests_simple_SOURCES = dummy.cc
-#tests_simple_LDADD = lib/libmochio-client.la
-#tests_strided_LDADD = lib/libmochio-client.la
-
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = maint/mochio-provider.pc \
 		 maint/mochio-client.pc
+
+SUFFIXES=
+LDADD=
+check_PROGRAMS=
+EXTRA_DIST=
+CLEANFILES=
+TESTS=
+
+include $(top_srcdir)/tests/Makefile.subdir
+
+# build check targets but not invoke
+tests: all $(check_PROGRAMS)
+
