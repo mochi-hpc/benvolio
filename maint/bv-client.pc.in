@@ -4,9 +4,9 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: MOCHIO
-Description: A mochi service for I/O: library for provider-side
-URL: https://xgitlab.cels.anl.gov/sds/mochio
+Description: A mochiservice for I/O: client-side library
+URL: https://xgitlab.cels.anl.gov/sds/benvolio
 Version: 0.0.1
 Requires: thallium abt-io margo
-Libs: -L${libdir} -lmochio-provider
+Libs: -L${libdir} -lbv-client
 Cflags: -I${includedir}

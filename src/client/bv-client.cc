@@ -1,4 +1,4 @@
-#include <mochio.h>
+#include <bv.h>
 #include <thallium.hpp>
 #include <utility>
 #include <vector>
@@ -16,7 +16,7 @@ namespace tl = thallium;
 
 #define MAX_PROTO_LEN 24
 
-struct mochio_client {
+struct bv_client {
     tl::engine *engine;
     std::vector<tl::provider_handle> targets;
     char proto[MAX_PROTO_LEN];
@@ -37,11 +37,11 @@ struct mochio_client {
 };
 
 typedef enum {
-    MOCHIO_READ,
-    MOCHIO_WRITE
+    bv_READ,
+    bv_WRITE
 } io_kind;
 
-static int set_proto_from_addr(mochio_client_t client, char *addr_str)
+static int set_proto_from_addr(bv_client_t client, char *addr_str)
 {
     int i;
     for (i=0; i< MAX_PROTO_LEN; i++) {
@@ -54,12 +54,12 @@ static int set_proto_from_addr(mochio_client_t client, char *addr_str)
     if (client->proto[i] != '\0') return -1;
     return 0;
 }
-mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
+bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
 {
     char *addr_str;
     int rank;
     int ret, i, nr_targets;
-    struct mochio_client * client = (struct mochio_client *)calloc(1,sizeof(*client));
+    struct bv_client * client = (struct bv_client *)calloc(1,sizeof(*client));
     char *ssg_group_buf;
     double init_time = ABT_get_wtime();
     MPI_Comm dupcomm;
@@ -123,16 +123,16 @@ mochio_client_t mochio_init(MPI_Comm comm, const char * cfg_file)
 
 /* need to patch up the API i think: we don't know what servers to talk to.  Or
  * do you talk to one and then that provider informs the others? */
-int mochio_setchunk(const char *file, ssize_t nbytes)
+int bv_setchunk(const char *file, ssize_t nbytes)
 {
     return 0;
 }
 
-int mochio_delete(mochio_client_t client, const char *file)
+int bv_delete(bv_client_t client, const char *file)
 {
     return client->delete_op.on(client->targets[0])(std::string(file) );
 }
-int mochio_finalize(mochio_client_t client)
+int bv_finalize(bv_client_t client)
 {
     ssg_group_detach(client->gid);
     ssg_finalize();
@@ -149,7 +149,7 @@ int mochio_finalize(mochio_client_t client)
 // -- possibly splitting up anything that falls on a server boundary
 // - are the file lists monotonically non-decreasing?  Any benefit if we relax that requirement?
 
-static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op,
+static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
@@ -157,7 +157,7 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     size_t bytes_moved = 0;
 
     /* How expensive is this? do we need to move this out of the I/O path?
-     * Maybe 'mochio_stat' can cache these values on the client struct? */
+     * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
     compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
 
@@ -174,7 +174,7 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
 
-    if (op == MOCHIO_READ) {
+    if (op == bv_READ) {
         mode = tl::bulk_mode::write_only;
         rpc = client->read_op;
     }
@@ -196,7 +196,7 @@ static size_t mochio_io(mochio_client_t client, const char *filename, io_kind op
     return bytes_moved;
 }
 
-ssize_t mochio_write(mochio_client_t client, const char *filename,
+ssize_t bv_write(bv_client_t client, const char *filename,
         const int64_t mem_count, const char * mem_addresses[], const uint64_t mem_sizes[],
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
@@ -204,7 +204,7 @@ ssize_t mochio_write(mochio_client_t client, const char *filename,
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_WRITE, mem_count, mem_addresses, mem_sizes,
+    ret = bv_io(client, filename, bv_WRITE, mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes);
 
     write_time = ABT_get_wtime() - write_time;
@@ -213,7 +213,7 @@ ssize_t mochio_write(mochio_client_t client, const char *filename,
     return ret;
 }
 
-ssize_t mochio_read(mochio_client_t client, const char *filename,
+ssize_t bv_read(bv_client_t client, const char *filename,
         const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
@@ -221,7 +221,7 @@ ssize_t mochio_read(mochio_client_t client, const char *filename,
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
 
-    ret = mochio_io(client, filename, MOCHIO_READ, mem_count, mem_addresses, mem_sizes,
+    ret = bv_io(client, filename, bv_READ, mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes);
 
     read_time = ABT_get_wtime() - read_time;
@@ -230,7 +230,7 @@ ssize_t mochio_read(mochio_client_t client, const char *filename,
     return ret;
 }
 
-int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stats *stats)
+int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 {
     struct file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
 
@@ -245,7 +245,7 @@ int mochio_stat(mochio_client_t client, const char *filename, struct mochio_stat
     return(1);
 }
 
-int mochio_statistics(mochio_client_t client, int show_server)
+int bv_statistics(bv_client_t client, int show_server)
 {
     int ret =0;
     if (show_server) {
@@ -260,7 +260,7 @@ int mochio_statistics(mochio_client_t client, int show_server)
     return ret;
 }
 
-int mochio_flush(mochio_client_t client, const char *filename)
+int bv_flush(bv_client_t client, const char *filename)
 {
     int ret=0;
     for (auto target : client->targets)

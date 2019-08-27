@@ -24,14 +24,14 @@ server and another starts a client, it does mean that the protection domains
 can end up hanging around longer than expected.  You might get an error like
 this:
 
-    apmgr pdomain create mochio-test failed: cannot allocate protection domain; reached limit of 10
+    apmgr pdomain create bv-test failed: cannot allocate protection domain; reached limit of 10
 
 No way around that except to contact the support desk and ask for help cleaning up old ones.
 
 ## Building MPICH
 
-Like any other external library, the 'mochio' driver (
-https://github.com/roblatham00/mpich/tree/mochio
+Like any other external library, the 'bv' driver (
+https://github.com/roblatham00/mpich/tree/bv
 ) requires CPPFLAGS, LDFLAGS, and LIBS to be set.  Furthermore, builidng on
 the Cray requires a few extra steps, documented here:
 https://wiki.mpich.org/mpich/index.php/Cray

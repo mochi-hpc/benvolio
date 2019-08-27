@@ -1,11 +1,11 @@
 
 AC_PREREQ([2.59])
-AC_INIT([mochio], [0.0], [robl@mcs.anl.gov])
+AC_INIT([benvolio], [0.0], [robl@mcs.anl.gov])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects silent-rules])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/client/mochio-client.cc])
-AC_CONFIG_HEADERS([include/mochio-config.h])
+AC_CONFIG_SRCDIR([src/client/bv-client.cc])
+AC_CONFIG_HEADERS([include/bv-config.h])
 #
 
 # checks for programs
@@ -66,5 +66,5 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # checks for library functions
 
-AC_CONFIG_FILES([Makefile maint/mochio-client.pc maint/mochio-provider.pc])
+AC_CONFIG_FILES([Makefile maint/bv-client.pc maint/bv-provider.pc])
 AC_OUTPUT

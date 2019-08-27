@@ -2,7 +2,7 @@
 #include <abt-io.h>
 #include <ssg.h>
 #include <ssg-mpi.h>
-#include "mochio-provider.h"
+#include "bv-provider.h"
 
 
 #define ASSERT(__cond, __msg, ...) { if(!(__cond)) { fprintf(stderr, "[%s:%d] " __msg, __FILE__, __LINE__, __VA_ARGS__); exit(-1); } }
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 {
     margo_instance_id mid;
     abt_io_instance_id abtio;
-    mochio_svc_provider_t mochio_id;
+    bv_svc_provider_t bv_id;
     int ret;
     int rank;
     ssg_group_id_t gid;
@@ -56,14 +56,14 @@ int main(int argc, char **argv)
 
     ret = ssg_init(mid);
     ASSERT(ret == 0, "ssg_init() failed (ret = %d)\n", ret);
-    gid = ssg_group_create_mpi(MOCHIO_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL);
+    gid = ssg_group_create_mpi(BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL);
     ASSERT(gid != SSG_GROUP_ID_NULL, "ssg_group_create_mpi() failed (ret = %s)","SSG_GROUP_ID_NULL");
     margo_push_finalize_callback(mid, &finalized_ssg_group_cb, (void*)&gid);
 
     if (rank == 0)
         service_config_store(argv[2], gid);
 
-    ret = mochio_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, &mochio_id);
+    ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, &bv_id);
 
     margo_wait_for_finalize(mid);
     margo_finalize(mid);

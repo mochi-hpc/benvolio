@@ -15,7 +15,7 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
-#include "mochio-provider.h"
+#include "bv-provider.h"
 
 
 #include "common.h"
@@ -29,7 +29,7 @@ namespace tl = thallium;
 #define BUFSIZE 1024
 
 
-struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
+struct bv_svc_provider : public tl::provider<bv_svc_provider>
 {
     tl::engine * engine;
     ssg_group_id_t gid;
@@ -293,16 +293,16 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         return (fsync(fd));
     }
 
-    mochio_svc_provider(tl::engine *e, abt_io_instance_id abtio,
+    bv_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
-        : tl::provider<mochio_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
+        : tl::provider<bv_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
 
-            define("write", &mochio_svc_provider::process_write, pool);
-            define("read", &mochio_svc_provider::process_read, pool);
-            define("stat", &mochio_svc_provider::getstats);
-            define("delete", &mochio_svc_provider::del);
-            define("flush", &mochio_svc_provider::flush);
-            define("statistics", &mochio_svc_provider::statistics);
+            define("write", &bv_svc_provider::process_write, pool);
+            define("read", &bv_svc_provider::process_read, pool);
+            define("stat", &bv_svc_provider::getstats);
+            define("delete", &bv_svc_provider::del);
+            define("flush", &bv_svc_provider::flush);
+            define("statistics", &bv_svc_provider::statistics);
 
         }
     void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
@@ -317,22 +317,22 @@ struct mochio_svc_provider : public tl::provider<mochio_svc_provider>
         std::cout << std::endl;
     }
 
-    ~mochio_svc_provider() {
+    ~bv_svc_provider() {
         wait_for_finalize();
     }
 };
 
-int mochio_svc_provider_register(margo_instance_id mid,
+int bv_svc_provider_register(margo_instance_id mid,
         abt_io_instance_id abtio,
         ABT_pool pool,
         ssg_group_id_t gid,
-        mochio_svc_provider_t *mochio_id)
+        bv_svc_provider_t *bv_id)
 {
     uint16_t provider_id = 0xABC;
     auto thallium_engine = new tl::engine(mid);
     auto thallium_pool = tl::pool(pool);
-    auto mochio_provider = new mochio_svc_provider(thallium_engine, abtio, gid, provider_id, thallium_pool);
-    *mochio_id = mochio_provider;
+    auto bv_provider = new bv_svc_provider(thallium_engine, abtio, gid, provider_id, thallium_pool);
+    *bv_id = bv_provider;
     return 0;
 }
 

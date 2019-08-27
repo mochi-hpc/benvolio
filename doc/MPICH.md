@@ -1,13 +1,13 @@
-# MOCHIO and MPICH
+# Benvolio and MPICH
 
-- check out https://github.com/roblatham00/mpich/tree/mochio
+- check out https://github.com/roblatham00/mpich/tree/benvolio
 
-- set CPPFLAGS and LDFLAGS to point to mochio installation
+- set CPPFLAGS and LDFLAGS to point to benvolio installation
 
-- add 'mochio' to the `--with-file-system` list: e.g. --with-file-system=lustre+mochio
+- add 'bv' to the `--with-file-system` list: e.g. --with-file-system=lustre+bv
 
-- Start however many MOCHIO targets you want.
+- Start however many Benvolio targets you want.
 
-- set the environemnt variable MOCHIO_STATEFILE to point to the server statefile.
+- set the environemnt variable BV_STATEFILE to point to the server statefile.
 
-- if you want extra information about mochio behavior, set the MOCHIO_SHOW_STATS
+- if you want extra information about benvolio behavior, set the BV_SHOW_STATS

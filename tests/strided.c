@@ -2,7 +2,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <mochio.h>
+#include <bv.h>
 #include <mpi.h>
 
 #define VERBOSE 1
@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
     int ret = 0;
     int i, j;
     int rank, np;
-    mochio_client_t client=NULL;
-    struct mochio_stats stats;
+    bv_client_t client=NULL;
+    struct bv_stats stats;
     const char *write_address, *read_address;
     uint64_t write_size, read_size;
     unsigned char *buf;
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
 
 #if 0
     printf("delete:\n");
-    mochio_delete(client, filename);
+    bv_delete(client, filename);
 #endif
 
     MPI_Init(&argc, &argv);
@@ -38,10 +38,10 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
 
-    client = mochio_init(MPI_COMM_WORLD, argv[1]);
+    client = bv_init(MPI_COMM_WORLD, argv[1]);
 
     printf("stat:");
-    mochio_stat(client, filename, &stats);
+    bv_stat(client, filename, &stats);
     printf("got blocksize %ld stripe_count: %d stripe_size: %d from provider\n",
             stats.blocksize, stats.stripe_count, stats.stripe_size);
 
@@ -59,10 +59,10 @@ int main(int argc, char **argv) {
     write_size = NSTRIDE * SSIZE;
 
     printf("writing\n");
-    mochio_write(client, filename, 1, &write_address, &write_size, NSTRIDE, offsets, lens);
+    bv_write(client, filename, 1, &write_address, &write_size, NSTRIDE, offsets, lens);
 
     printf("flushing\n");
-    mochio_flush(client, filename);
+    bv_flush(client, filename);
 
     printf("init read\n");
     
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     read_size = NSTRIDE * SSIZE;
 
     printf("reading\n");
-    mochio_read(client, filename, 1, &read_address, &read_size, 1, offsets, lens);
+    bv_read(client, filename, 1, &read_address, &read_size, 1, offsets, lens);
     for(i = 0; i < NSTRIDE * SSIZE; i++){
         j = (i / SSIZE) % np + 1;
         if (buf[i] != j){
@@ -90,10 +90,10 @@ int main(int argc, char **argv) {
     free(buf);
 
 #if VERBOSE
-    mochio_statistics(client, 1);
+    bv_statistics(client, 1);
 #endif
 
-    mochio_finalize(client);
+    bv_finalize(client);
     MPI_Finalize();
     return ret;
 }

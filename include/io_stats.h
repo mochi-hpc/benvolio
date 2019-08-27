@@ -36,10 +36,10 @@ class io_stats {
     int64_t bytes_read;       // bytes read from storage
     double mutex_time;        // time spent acquiring mutexes
     /* client things */
-    int client_write_calls;   // number of times "mochio_write" called
-    double client_write_time; // time client spent in "mochio_write",
-    int client_read_calls;    // number of tiems "mochio_read" called
-    double client_read_time;  // time client spent in "mochio_read
+    int client_write_calls;   // number of times "bv_write" called
+    double client_write_time; // time client spent in "bv_write",
+    int client_read_calls;    // number of tiems "bv_read" called
+    double client_read_time;  // time client spent in "bv_read
     double client_init_time; // how long does it take to set everything up
 
     io_stats & operator = (const io_stats &rhs);

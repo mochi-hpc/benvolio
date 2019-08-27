@@ -10,7 +10,7 @@ SUFFIXES += .o .c .cpp
 AM_DEFAULT_SOURCE_EXT = .c
 
 AM_CPPFLAGS += -I$(top_srcdir)/include
-LDADD  += $(top_srcdir)/lib/libmochio-client.la
+LDADD  += $(top_builddir)/lib/libbv-client.la
 
 TESTPROGRAMS = tests/simple \
 	       tests/strided \
@@ -19,7 +19,7 @@ TESTPROGRAMS = tests/simple \
 
 check_PROGRAMS += ${TESTPROGRAMS}
 
-EXTRA_DIST += tests/wrap_runs.sh
+EXTRA_DIST += $(top_srcdir)/tests/wrap_runs.sh
 
 OUT_FILES = $(check_PROGRAMS:%=%.bin)
 SERVER_FILES = $(check_PROGRAMS:%=%.svc)
@@ -27,7 +27,7 @@ SERVER_FILES = $(check_PROGRAMS:%=%.svc)
 CLEANFILES += $(OUT_FILES) tests/core tests/core.* \
              $(SERVER_FILES)
 
-LOG_COMPILER = tests/wrap_runs.sh
+LOG_COMPILER = $(top_srcdir)/tests/wrap_runs.sh
 
 TESTS += ${TESTPROGRAMS}
 
