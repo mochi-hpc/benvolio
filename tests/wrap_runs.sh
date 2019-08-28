@@ -10,8 +10,8 @@ NCLIENT=1
 OUT_FILE=`basename $1`
 
 # Start server
-echo "mpiexec -np ${NSERVER} ${top_builddir}/src/provider/bv-server tcp ${OUT_FILE}.svc &"
-mpiexec -np {NSERVER} ${top_builddir}/src/provider/bv-server tcp ${OUT_FILE}.svc &
+echo "mpiexec -np ${NSERVER} src/provider/bv-server tcp ${OUT_FILE}.svc &"
+mpiexec -np {NSERVER} src/provider/bv-server tcp ${OUT_FILE}.svc &
 
 echo "SERVER_PID=$!"
 SERVER_PID=$!
