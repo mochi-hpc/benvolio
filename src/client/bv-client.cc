@@ -26,6 +26,7 @@ struct bv_client {
     tl::remote_procedure delete_op;
     tl::remote_procedure flush_op;
     tl::remote_procedure statistics_op;
+    tl::remote_procedure size_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
     io_stats statistics;
 
@@ -105,6 +106,7 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
     client->delete_op = client->engine->define("delete");
     client->flush_op = client->engine->define("flush");
     client->statistics_op = client->engine->define("statistics");
+    client->size_op = client->engine->define("size");
 
 
     /* used to think the server would know something about how it wanted to
@@ -267,4 +269,12 @@ int bv_flush(bv_client_t client, const char *filename)
         ret = client->flush_op.on(target)(std::string(filename));
 
     return ret;
+}
+
+ssize_t bv_getsize(bv_client_t client, const char *filename)
+{
+    ssize_t size;
+    size = client->size_op.on(client->targets[0])(std::string(filename));
+
+    return size;
 }

@@ -293,6 +293,21 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return (fsync(fd));
     }
 
+    ssize_t getsize(const std::string &file) {
+        off_t oldpos=-1, pos=-1;
+        int fd = getfd(file, O_RDONLY);
+        oldpos = lseek(fd, 0, SEEK_CUR);
+        if (oldpos == -1)
+            return -errno;
+        pos = lseek(fd, 0, SEEK_END);
+        if (pos == -1)
+            return -errno;
+        /* put things back the way we found them */
+        lseek(fd, oldpos, SEEK_SET);
+        return pos;
+    }
+
+
     bv_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, uint16_t provider_id, tl::pool &pool)
         : tl::provider<bv_svc_provider>(*e, provider_id), engine(e), gid(gid), pool(pool), abt_id(abtio) {
@@ -303,6 +318,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             define("delete", &bv_svc_provider::del);
             define("flush", &bv_svc_provider::flush);
             define("statistics", &bv_svc_provider::statistics);
+            define("size", &bv_svc_provider::getsize);
 
         }
     void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)

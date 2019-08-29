@@ -19,6 +19,7 @@ int main(int argc, char **argv)
     char cmp[128] = "";
     int ret = 0;
     char *filename;
+    ssize_t filesize;
 
 #if 0
     printf("delete:\n");
@@ -82,6 +83,12 @@ int main(int argc, char **argv)
     }
     free(bigbuf);
     free(cmpbuf);
+
+    filesize = bv_getsize(client, filename);
+    if (filesize != 15000+20) {
+        printf("Expected %d got %ld\n", 15000+20, filesize);
+        ret -= 1;
+    }
 
 #if VERBOSE
     bv_statistics(client, 1);

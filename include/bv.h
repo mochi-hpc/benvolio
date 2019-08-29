@@ -75,6 +75,10 @@ int bv_flush(bv_client_t client, const char *filename);
 
 /* delete: remove the file */
 int bv_delete(bv_client_t client, const char *filename);
+
+/* getting file size: on parallel file system file size is expensive so make this a separate routine */
+ssize_t bv_getsize(bv_client_t client, const char *filename);
+
 #ifdef __cplusplus
 }
 #endif
