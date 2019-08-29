@@ -37,8 +37,8 @@ struct bv_client {
 };
 
 typedef enum {
-    bv_READ,
-    bv_WRITE
+    BV_READ,
+    BV_WRITE
 } io_kind;
 
 static int set_proto_from_addr(bv_client_t client, char *addr_str)
@@ -174,7 +174,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
 
-    if (op == bv_READ) {
+    if (op == BV_READ) {
         mode = tl::bulk_mode::write_only;
         rpc = client->read_op;
     }
@@ -204,7 +204,7 @@ ssize_t bv_write(bv_client_t client, const char *filename,
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
 
-    ret = bv_io(client, filename, bv_WRITE, mem_count, mem_addresses, mem_sizes,
+    ret = bv_io(client, filename, BV_WRITE, mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes);
 
     write_time = ABT_get_wtime() - write_time;
@@ -221,7 +221,7 @@ ssize_t bv_read(bv_client_t client, const char *filename,
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
 
-    ret = bv_io(client, filename, bv_READ, mem_count, mem_addresses, mem_sizes,
+    ret = bv_io(client, filename, BV_READ, mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes);
 
     read_time = ABT_get_wtime() - read_time;
