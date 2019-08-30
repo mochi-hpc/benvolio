@@ -84,7 +84,10 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
          - might want to data-sieve the I/O requests
          - might later read file */
         int flags = O_CREAT|O_RDWR;
+	double getfd_time = ABT_get_wtime();
         int fd = getfd(file, flags);
+	getfd_time = ABT_get_wtime() - getfd_time;
+	stats.getfd += getfd_time;
 
         // we have a scratch buffer we can work with, which might be smaller
         // than whatever the client has sent our way.  We will repeatedly bulk
@@ -98,8 +101,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         segments[0].first = (void *)(&(buffer[0]));
         segments[0].second = bufsize;
 
+	double expose_time = ABT_get_wtime();
         tl::endpoint ep = req.get_endpoint();
         tl::bulk local = engine->expose(segments, tl::bulk_mode::read_write);
+	expose_time = ABT_get_wtime() - expose_time;
+	stats.write_expose += expose_time;
 
         // when are we done?
         // - what if the client has a really long file descripton but for some reason only a small amount of memory?
@@ -117,6 +123,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             // the '>>' operator moves bytes from one bulk descriptor to the
             // other, moving the smaller of the two
             file_xfer = 0;
+	    double bulk_time = ABT_get_wtime();
             try {
             client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) >> local;
             } catch (std::exception err) {
@@ -124,6 +131,10 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                     << client_cursor << " size: "
                     << client_bulk.size()-client_cursor << std::endl;
             }
+	    bulk_time = ABT_get_wtime() - bulk_time;
+	    stats.write_bulk_xfers++;
+	    stats.write_bulk_time += bulk_time;
+
             // operator overloading might make this a little hard to parse at first.
             // - >> and << do a bulk transfer between bulk endpoints, transfering
             //   the smallest  of the two
@@ -131,8 +142,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //   if one wants a subset
             // - select a subset on the client-side bulk descriptor before
             //   associating it with a connection.
+	    double pwrite_time = ABT_get_wtime();
             while (file_idx < file_starts.size() && file_xfer < client_xfer) {
-                double pwrite_time = ABT_get_wtime();
 
                 // we might be able to only write a partial block
                 nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
@@ -140,7 +151,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 {
                     std::lock_guard<tl::mutex> guard(stats_mutex);
                     stats.server_write_calls++;
-                    stats.server_write_time = ABT_get_wtime() - pwrite_time;
                     stats.bytes_written += nbytes;
                 }
 
@@ -159,8 +169,15 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 xfered += nbytes;
             }
             client_cursor += client_xfer;
+
+	    pwrite_time = ABT_get_wtime() - pwrite_time;
+	    stats.server_write_time += pwrite_time;
         }
+
+	double response_time = ABT_get_wtime();
         req.respond(xfered);
+	response_time = ABT_get_wtime() - response_time;
+	stats.write_response += response_time;
         {
             std::lock_guard<tl::mutex> guard(stats_mutex);
             stats.write_rpc_calls++;
@@ -197,7 +214,10 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
          * first for read then written to */
         int flags = O_RDWR;
 
+	double getfd_time = ABT_get_wtime();
         int fd = getfd(file, flags);
+	getfd_time = ABT_get_wtime() - getfd_time;
+	stats.getfd += getfd_time;
 
         tl::endpoint ep = req.get_endpoint();
         /* Simliar algorithm as write, but data movement goes in the opposite direction */
@@ -216,7 +236,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 {
                     std::lock_guard<tl::mutex> guard(stats_mutex);
                     stats.server_read_calls++;
-                    stats.server_read_time = ABT_get_wtime() - pread_time;
                     stats.bytes_read += nbytes;
                 }
 
@@ -234,15 +253,29 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
                 xfered += nbytes;
             }
+	    pread_time = ABT_get_wtime() - pread_time;
+	    stats.server_read_time += pread_time;
+
+	    double expose_time = ABT_get_wtime();
             std::vector<std::pair<void *, std::size_t>>segments(1);
             segments[0].first = (void*)(&(buffer[0]));
             segments[0].second = file_xfer;
             tl::bulk local = engine->expose(segments, tl::bulk_mode::read_write);
+	    expose_time = ABT_get_wtime() - expose_time;
+	    stats.read_expose += expose_time;
 
+	    double bulk_time = ABT_get_wtime();
             client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) << local;
             client_cursor += client_xfer;
+	    bulk_time = ABT_get_wtime() - bulk_time;
+	    stats.read_bulk_xfers++;
+	    stats.read_bulk_time += bulk_time;
         }
+
+	double response_time = ABT_get_wtime();
         req.respond(xfered);
+	response_time = ABT_get_wtime() - response_time;
+	stats.read_response += response_time;
         {
             std::lock_guard<tl::mutex> guard(stats_mutex);
             stats.read_rpc_calls++;
