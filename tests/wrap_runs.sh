@@ -41,8 +41,8 @@ RET_VAL=$?
 echo "RET_VAL=${RET_VAL}"
 
 # Stop server
-echo "kill ${SERVER_PID}"
-kill ${SERVER_PID}
+echo "src/client/bv-shutdown ${OUT_FILE}.svc"
+src/client/bv-shutdown ${OUT_FILE}.svc
 
 # Return result
 exit ${RET_VAL}

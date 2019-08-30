@@ -3,10 +3,14 @@ ACLOCAL_AMFLAGS="-Im4"
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
-bin_PROGRAMS = src/provider/bv-server
+bin_PROGRAMS = src/provider/bv-server \
+	       src/client/bv-shutdown
 
 src_provider_bv_server_SOURCES = src/provider/server.c
 src_provider_bv_server_LDADD = lib/libbv-provider.la
+
+src_client_bv_shutdown_SOURCES = src/client/bv-shutdown.cc
+src_client_bv_shutdown_LDADD = lib/libbv-client.la
 
 lib_LTLIBRARIES = lib/libbv-client.la \
     lib/libbv-provider.la

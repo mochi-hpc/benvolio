@@ -143,6 +143,15 @@ int bv_finalize(bv_client_t client)
     return 0;
 }
 
+int bv_shutdown(bv_client_t client)
+{
+    int ret =0;
+    for (auto target : client->targets)
+        client->engine->shutdown_remote_engine(target);
+
+    return ret;
+}
+
 // use bulk transfer for the memory description
 // the locations in file we will just send over in a list
 // - could compress the file locations: they are likely to compress quite well

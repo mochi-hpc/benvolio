@@ -67,4 +67,5 @@ int main(int argc, char **argv)
 
     margo_wait_for_finalize(mid);
     margo_finalize(mid);
+    MPI_Finalize();
 }

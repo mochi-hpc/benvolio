@@ -23,7 +23,15 @@ int bv_setchunk(const char *file, ssize_t nbytes);
 
 /* "init" might be a place to pass in distribution information too? */
 bv_client_t bv_init(MPI_Comm comm, const char * ssg_statefile);
+
+/* clean up clients.  Must be the absolute last routine called */
 int bv_finalize(bv_client_t client);
+
+
+/* 'shutdown' (go ask servers to kindly exit) is sufficiently different from
+ * 'finalize' (clean up client stuff) that it seemed to warrant its own api
+ * call. */
+int bv_shutdown(bv_client_t client);
 
 /* stateless api: always pass in a file name? */
 
