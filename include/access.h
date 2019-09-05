@@ -11,7 +11,7 @@
 //
 // instead of a 'target' in the access, we will have a collection of accesses indexed by target
 //
-struct access {
+struct io_access {
     // thallium bulk described by a vector of (address, len) 'pair'
     // build that as we process the memory and file lists so we don't have to
     // loop through the description lists twice

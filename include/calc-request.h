@@ -16,7 +16,7 @@ void compute_striping_info(int stripe_size, int stripe_count, int *server_count,
  * figure out where a file request goes, but also trying to match each piece of
  * the memory description with each part of the file description.
  * remember:
- * - vector<struct access> is "number of targets" big
+ * - vector<io_access> is "number of targets" big
  * - we generate offset, length, and pointer vectors for each target in the my_reqs vector.
  *
  * iovec_count: [IN] how many memory requests
@@ -34,4 +34,4 @@ void compute_striping_info(int stripe_size, int stripe_count, int *server_count,
 int calc_requests(int mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         int file_count, const off_t *file_starts, const uint64_t *file_sizes,
         int stripe_size, int targets_used,
-        std::vector<struct access> & my_reqs);
+        std::vector<io_access> & my_reqs);

@@ -128,7 +128,7 @@ int calc_aggregator(off_t off, uint64_t * len,
 int calc_requests(int mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         int file_count, const off_t *file_starts, const uint64_t *file_sizes,
         int stripe_size, int targets_used,
-        std::vector<struct access> & my_reqs)
+        std::vector<io_access> & my_reqs)
 {
     // which element of the memory/file description list we are working on now
     int memblk=0, fileblk=0;
