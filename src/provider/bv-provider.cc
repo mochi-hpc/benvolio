@@ -14,6 +14,7 @@
 #include <mutex>
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
+#include <thallium/margo_exception.hpp>
 
 #include "bv-provider.h"
 
@@ -124,13 +125,18 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             // other, moving the smaller of the two
             file_xfer = 0;
 	    double bulk_time = ABT_get_wtime();
+	    if (client_bulk.size()-client_cursor == 0) continue;
             try {
             client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) >> local;
-            } catch (std::exception err) {
-                std::cerr <<"Unable to bulk xfer at "
+            } catch (const tl::margo_exception &err) {
+                std::cerr <<"Unable to bulk get at "
                     << client_cursor << " size: "
                     << client_bulk.size()-client_cursor << std::endl;
-            }
+	    } catch (const tl::exception &err) {
+		std::cerr << "General thallium error " << std::endl;
+            } catch (...) {
+		std::cerr <<" Bulk get error.  Ignoring " << std::endl;
+	    }
 	    bulk_time = ABT_get_wtime() - bulk_time;
 	    stats.write_bulk_xfers++;
 	    stats.write_bulk_time += bulk_time;
@@ -265,8 +271,20 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	    stats.read_expose += expose_time;
 
 	    double bulk_time = ABT_get_wtime();
-            client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) << local;
-            client_cursor += client_xfer;
+	    if (client_bulk.size()-client_cursor != 0) {
+		try {
+		client_xfer = client_bulk(client_cursor, client_bulk.size()-client_cursor).on(ep) << local;
+		} catch (const tl::margo_exception &err) {
+		    std::cerr << "Unable to bulk put at " << client_cursor
+			<< " size: " << client_bulk.size()-client_cursor
+			<< std::endl;
+		} catch (const tl::exception &err) {
+		    std::cerr << "General thallium error " << std::endl;
+		} catch (...) {
+		    std::cerr << "Bulk put problem. Ignoring. " << std::endl;
+		}
+		client_cursor += client_xfer;
+	    }
 	    bulk_time = ABT_get_wtime() - bulk_time;
 	    stats.read_bulk_xfers++;
 	    stats.read_bulk_time += bulk_time;
