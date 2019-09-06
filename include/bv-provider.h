@@ -10,7 +10,7 @@ extern "C"
 typedef struct bv_svc_provider * bv_svc_provider_t;
 
 int bv_svc_provider_register(margo_instance_id mid,
-        abt_io_instance_id abtio, ABT_pool pool, ssg_group_id_t gid, bv_svc_provider_t *bv_id);
+        abt_io_instance_id abtio, ABT_pool pool, ssg_group_id_t gid, int bufsize, bv_svc_provider_t *bv_id);
 
 #ifdef __cplusplus
 }

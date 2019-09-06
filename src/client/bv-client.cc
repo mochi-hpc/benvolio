@@ -60,7 +60,6 @@ typedef enum {
 /* note: alters addr_str */
 char * get_proto_from_addr(char *addr_str)
 {
-    int i;
     char *p = addr_str;
     char *q = strchr(addr_str, ':');
     if (q == NULL) return NULL;
