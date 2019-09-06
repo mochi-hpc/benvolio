@@ -70,7 +70,7 @@ int main(int argc, char **argv)
                 statefile = strdup(optarg);
                 break;
             default:
-                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s statefile]\n", argv[0]);
+                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s streams] [-f statefile]\n", argv[0]);
                 exit(-1);
         }
     }
