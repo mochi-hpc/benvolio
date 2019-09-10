@@ -49,7 +49,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         auto entry = filetable.find(file);
         if (entry == filetable.end() ) {
             fd = abt_io_open(abt_id, file.c_str(), flags, mode);
-            filetable[file] = fd;
+            if (fd > 0) filetable[file] = fd;
         } else {
             fd = entry->second;
         }
