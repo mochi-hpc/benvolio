@@ -7,6 +7,6 @@ Name: bv
 Description: A mochi service for I/O: library for provider-side
 URL: https://xgitlab.cels.anl.gov/sds/benvolio
 Version: 0.0.1
-Requires: thallium abt-io margo
+Requires: thallium abt-io margo ssg
 Libs: -L${libdir} -lbv-provider
 Cflags: -I${includedir}
