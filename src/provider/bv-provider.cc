@@ -38,16 +38,17 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     char *buffer;    // intermediate buffer for read/write operations
     unsigned int bufsize;
     struct io_stats stats;
+    static const int default_mode = 0644;
     tl::mutex    op_mutex;
     tl::mutex    stats_mutex;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
-    int getfd(const std::string &file, int flags) {
+    int getfd(const std::string &file, int flags, int mode=default_mode) {
         int fd=-1;
         auto entry = filetable.find(file);
         if (entry == filetable.end() ) {
-            fd = abt_io_open(abt_id, file.c_str(), flags, 0644);
+            fd = abt_io_open(abt_id, file.c_str(), flags, mode);
             filetable[file] = fd;
         } else {
             fd = entry->second;
@@ -304,6 +305,15 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         lseek(fd, oldpos, SEEK_SET);
         return pos;
     }
+    /* operations are on descriptive names but in some situations one might
+     * want to separate the lookup, creation, or other overheads from the I/O
+     * overheads */
+    int declare(const std::string &file, int flags, int mode)
+    {
+        int fd = getfd(file, flags, mode);
+        if (fd == -1) return -errno;
+        return 1;
+    }
 
 
     bv_svc_provider(tl::engine *e, abt_io_instance_id abtio,
@@ -319,6 +329,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             define("flush", &bv_svc_provider::flush);
             define("statistics", &bv_svc_provider::statistics);
             define("size", &bv_svc_provider::getsize);
+            define("declare", &bv_svc_provider::declare);
 
         }
     void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)

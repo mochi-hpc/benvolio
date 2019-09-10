@@ -5,6 +5,11 @@
 #include <bv.h>
 #include <mpi.h>
 
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #define VERBOSE 1
 
 int main(int argc, char **argv)
@@ -21,15 +26,18 @@ int main(int argc, char **argv)
     char *filename;
     ssize_t filesize;
 
-#if 0
-    printf("delete:\n");
-    bv_delete(client, filename);
-#endif
-
     if (argc == 3)
         filename = argv[2];
     else
         filename = "dummy";
+
+    printf("delete:\n");
+    bv_delete(client, filename);
+
+    ret = bv_declare(client, filename, O_RDWR|O_CREAT, 0644);
+    if (ret != 0) printf("Error in bv_declare\n");
+    ret -= 1;
+
 
     printf("stat:");
     bv_stat(client, filename, &stats);

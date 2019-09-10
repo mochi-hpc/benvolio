@@ -87,6 +87,12 @@ int bv_delete(bv_client_t client, const char *filename);
 /* getting file size: on parallel file system file size is expensive so make this a separate routine */
 ssize_t bv_getsize(bv_client_t client, const char *filename);
 
+/* operations are on descriptive names but in some situations one might want
+ * to separate the lookup, creation, or other overheads from the I/O overheads
+ */
+#define BV_NOCREATE 0
+int bv_declare(bv_client_t client, const char *filename, int flags, int mode);
+
 #ifdef __cplusplus
 }
 #endif

@@ -26,6 +26,7 @@ struct bv_client {
     tl::remote_procedure flush_op;
     tl::remote_procedure statistics_op;
     tl::remote_procedure size_op;
+    tl::remote_procedure declare_op;
     ssg_group_id_t gid;     // attaches to this group; not a member
     io_stats statistics;
 
@@ -48,6 +49,7 @@ struct bv_client {
         flush_op(engine->define("flush")),
         statistics_op(engine->define("statistics")),
         size_op(engine->define("size")),
+        declare_op(engine->define("declare")),
         gid(group) {}
 
 };
@@ -286,4 +288,19 @@ ssize_t bv_getsize(bv_client_t client, const char *filename)
     size = client->size_op.on(client->targets[0])(std::string(filename));
 
     return size;
+}
+
+int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
+{
+    std::vector<tl::async_response> responses;
+    for (auto target : client->targets)
+        responses.push_back(client->declare_op.on(target).async(std::string(filename), flags, mode));
+
+    int ret = 0;
+    int result = 0;
+    for (auto &r : responses) {
+        result = r.wait();
+        ret += result;
+    }
+    return ret;
 }
