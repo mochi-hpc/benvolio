@@ -60,7 +60,7 @@ typedef enum {
 } io_kind;
 
 /* note: alters addr_str */
-char * get_proto_from_addr(char *addr_str)
+static char * get_proto_from_addr(char *addr_str)
 {
     char *p = addr_str;
     char *q = strchr(addr_str, ':');

@@ -31,6 +31,7 @@ static size_t get_lumsize()
 int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *stripe_count)
 {
     int ret = 0;
+    int status = 0;
     /* guess some reasonable defaults for non-lustre systems */
     *stripe_size = 4096;
     *stripe_count = 1;
@@ -43,25 +44,30 @@ int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *strip
      *	  - check parent directory
      * - maybe the file is not lustre? */
     ret = llapi_file_get_stripe(filename, lov);
-    switch(errno) {
+    if (ret != 0) status = errno;
+    switch(status) {
 	char *dup, *parent;
-	case ENOENT:
+	case ENOTTY: /* a valid file, but not a lustre file  */
+	    ret = 0;
+	    goto fn_exit;
+	case ENOENT:  /* given file didn't exist, but can use parent's stripe info */
 	    dup = strdup(filename);
 	    parent = dirname(dup);
 	    ret = llapi_file_get_stripe(parent, lov);
 	    /* if still enoent, we give up */
-	    free(dup);
-	    if (errno ==  ENOENT)
+	    if (ret != 0 && errno ==  ENOENT) {
+		free(dup);
 		goto fn_exit;
+	    }
+	    /* fall through */
+	case 0: /* success */
+	    *stripe_size = lov->lmm_stripe_size;
+	    *stripe_count = lov->lmm_stripe_count;
 	    break;
-	case ENOTTY:
-	    ret = 0;
-	    goto fn_exit;
+
 	default:
-	    if (ret != 0) perror("Unable to get Lustre stripe info");
+	    perror("Unable to get Lustre stripe info");
     };
-    *stripe_size = lov->lmm_stripe_size;
-    *stripe_count = lov->lmm_stripe_count;
 
 #endif
 

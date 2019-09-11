@@ -27,6 +27,11 @@
 #include "lustre-utils.h"
 namespace tl = thallium;
 
+struct file_info {
+    int fd;
+    int flags;
+};
+
 struct bv_svc_provider : public tl::provider<bv_svc_provider>
 {
     tl::engine * engine;
@@ -34,7 +39,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     tl::pool pool;
     abt_io_instance_id abt_id;
     ssize_t blocksize=1024*8;        // todo: some kind of general distribution function perhaps
-    std::map<std::string, int> filetable;      // filename to file id mapping
+    std::map<std::string, file_info> filetable;      // filename to file id mapping
     // probably needs to be larger and registered with mercury somehow
     char *buffer;    // intermediate buffer for read/write operations
     unsigned int bufsize;
@@ -45,14 +50,23 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
     // server will maintain a cache of open files
     // std::map not great for LRU
+    // if we see a request for a file with a different 'flags' we will close and reopen
     int getfd(const std::string &file, int flags, int mode=default_mode) {
         int fd=-1;
         auto entry = filetable.find(file);
         if (entry == filetable.end() ) {
+	    // no 'file' in table
             fd = abt_io_open(abt_id, file.c_str(), flags, mode);
-            if (fd > 0) filetable[file] = fd;
+            if (fd > 0) filetable[file] = {fd, flags};
         } else {
-            fd = entry->second;
+	    // found the file but we will close and reopen if different flags requested
+	    if (entry->second.flags == flags)
+		fd = entry->second.fd;
+	    else {
+		abt_io_close(abt_id, entry->second.fd);
+		fd = abt_io_open(abt_id, file.c_str(), flags, mode);
+		if (fd > 0) filetable[file] = {fd, flags};
+	    }
         }
         return fd;
     }
@@ -217,7 +231,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         rd_mutex_time = ABT_get_wtime() - rd_mutex_time;
 
         /* like with write, open for both read and write in case file opened
-         * first for read then written to */
+	 * first for read then written to. can omit O_CREAT here because
+	 * reading a non-existent file would be an error */
+
         int flags = O_RDWR;
 
 	double getfd_time = ABT_get_wtime();
@@ -323,7 +339,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
 	/* lustre header incompatible with c++ , so need to stuff the lustre
 	 * bits into a c-compiled object */
-	lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
+	ret.status  = lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
 
         return ret;
     }
@@ -339,13 +355,15 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return ret;
     }
     int flush(const std::string &file) {
+	/* omiting O_CREAT: what would it mean to flush a nonexistent file ? */
         int fd = getfd(file, O_RDWR);
         return (fsync(fd));
     }
 
     ssize_t getsize(const std::string &file) {
         off_t oldpos=-1, pos=-1;
-        int fd = getfd(file, O_RDONLY);
+	/* have to open read-write in case subsequent write call comes in */
+        int fd = getfd(file, O_CREAT|O_RDONLY);
         oldpos = lseek(fd, 0, SEEK_CUR);
         if (oldpos == -1)
             return -errno;
