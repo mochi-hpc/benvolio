@@ -47,6 +47,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     static const int default_mode = 0644;
     tl::mutex    op_mutex;
     tl::mutex    stats_mutex;
+    tl::mutex    size_mutex;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
@@ -361,6 +362,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ssize_t getsize(const std::string &file) {
+	std::lock_guard<tl::mutex> guard(size_mutex);
         off_t oldpos=-1, pos=-1;
 	/* have to open read-write in case subsequent write call comes in */
         int fd = getfd(file, O_CREAT|O_RDONLY);
