@@ -73,6 +73,40 @@ class io_stats {
     double client_read_time;  // time client spent in "bv_read
     double client_init_time; // how long does it take to set everything up
 
+    io_stats  & operator += (const io_stats &rhs) {
+	write_rpc_calls += rhs.write_rpc_calls;
+	write_rpc_time += rhs.write_rpc_time;
+	read_rpc_calls += rhs.read_rpc_calls;
+	read_rpc_time += rhs.read_rpc_time;
+
+	getfd += rhs.getfd;
+	server_write_calls += rhs.server_write_calls;
+	server_write_time += rhs.server_write_time;
+	bytes_written += rhs.bytes_written;
+	server_read_calls += rhs.server_read_calls;
+	server_read_time += rhs.server_read_time;
+	bytes_read += rhs.bytes_read;
+
+	write_bulk_time += rhs.write_bulk_time;
+	write_bulk_xfers += rhs.write_bulk_xfers;
+	read_bulk_time += rhs.read_bulk_time;
+	read_bulk_xfers += rhs.read_bulk_xfers;
+	write_expose += rhs.write_expose;
+	read_expose += rhs.read_expose;
+	write_response += rhs.write_response;
+	read_response += rhs.read_response;
+
+	mutex_time += rhs.mutex_time;
+
+	client_write_calls += rhs.client_write_calls;
+	client_write_time += rhs.client_write_time;
+	client_read_calls += rhs.client_read_calls;
+	client_read_time += rhs.client_read_time;
+	client_init_time += rhs.client_init_time;
+
+	return *this;
+    }
+
     void print_server() {
         std::cout << "write_rpc_calls " << write_rpc_calls
             << " write_rpc_time " << write_rpc_time
