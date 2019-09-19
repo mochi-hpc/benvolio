@@ -193,12 +193,14 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
 
     std::vector<tl::async_response> responses;
     std::vector<tl::bulk> my_bulks;
-    for (unsigned int i=0; i< client->targets.size(); i++) {
+    /* i: index into container of remote targets
+     * j: index into container of bulk regions -- different because we skip
+     * over targets without any work to do for this request  */
+    for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
 
         my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
-        responses.push_back(rpc.on(client->targets[i]).async(my_bulks[i], std::string(filename), my_reqs[i].offset, my_reqs[i].len));
-
+        responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len));
     }
 
     for (auto &r : responses) {
