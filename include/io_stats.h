@@ -2,13 +2,20 @@
 class io_stats {
     public:
         io_stats() : write_rpc_calls(0), write_rpc_time(0.0),
-            server_write_calls(0), bytes_written(0), read_rpc_calls(0),
+	    read_rpc_calls(0), read_rpc_time(0.0),
+	    getfd(0),
+            server_write_calls(0), server_write_time(0.0),
+	    bytes_written(0),
             server_read_calls(0), server_read_time(0.0), bytes_read(0),
-            mutex_time(0.0), client_write_calls(0), client_read_calls(0),
-            client_read_time(0.0), write_bulk_xfers(0), write_bulk_time(0.0),
-            read_bulk_xfers(0), read_bulk_time(0.0),
-            getfd(0), write_expose(0.0), read_expose(0.0),
-            write_response(0.0), read_response(0.0) {};
+	    write_bulk_time(0.0), write_bulk_xfers(0),
+            read_bulk_time(0.0), read_bulk_xfers(0),
+            write_expose(0.0), read_expose(0.0),
+            write_response(0.0), read_response(0.0),
+	    mutex_time(0.0),
+            client_write_calls(0), client_write_time(0.0),
+	    client_read_calls(0), client_read_time(0.0),
+	    client_init_time(0.0)
+    {};
 
     template<typename A> void serialize(A &ar) {
         ar & write_rpc_calls;
