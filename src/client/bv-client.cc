@@ -140,7 +140,7 @@ int bv_finalize(bv_client_t client)
     ssg_group_detach(client->gid);
     ssg_finalize();
     delete client->engine;
-    free(client);
+    delete client;
     return 0;
 }
 
