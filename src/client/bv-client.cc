@@ -204,7 +204,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     }
 
     for (auto &r : responses) {
-        size_t ret = r.wait();
+        ssize_t ret = r.wait();
         if (ret >= 0)
             bytes_moved += ret;
     }
