@@ -137,8 +137,13 @@ int bv_delete(bv_client_t client, const char *file)
 }
 int bv_finalize(bv_client_t client)
 {
+    if (client == NULL) return 0;
+
     ssg_group_detach(client->gid);
     ssg_finalize();
+    /* cleaning up endpoints first because endpoints need the engine to be able
+     * to cleanly delete themselves */
+    client->targets.erase(client->targets.begin(), client->targets.end());
     delete client->engine;
     delete client;
     return 0;
