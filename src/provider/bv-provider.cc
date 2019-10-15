@@ -385,7 +385,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     {
         int fd = getfd(file, flags, mode);
         if (fd == -1) return -errno;
-        return 1;
+        return 0;
     }
 
 

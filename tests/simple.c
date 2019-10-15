@@ -36,7 +36,6 @@ int main(int argc, char **argv)
 
     ret = bv_declare(client, filename, O_RDWR|O_CREAT, 0644);
     if (ret != 0) printf("Error in bv_declare\n");
-    ret -= 1;
 
 
     printf("stat:");
