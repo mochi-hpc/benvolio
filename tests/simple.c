@@ -22,6 +22,7 @@ int main(int argc, char **argv)
     client = bv_init(MPI_COMM_WORLD, argv[1]);
     char msg[] = "Hello Mochi";
     char cmp[128] = "";
+    uint64_t bytes;
     int ret = 0;
     char *filename;
     ssize_t filesize;
@@ -48,7 +49,11 @@ int main(int argc, char **argv)
     off_t offset= 0;
     uint64_t size=strlen(msg);
     printf("writing\n");
-    bv_write(client, filename, 1, &write_address, &write_size, 1, &offset, &size);
+    bytes = bv_write(client, filename, 1, &write_address, &write_size, 1, &offset, &size);
+    if (bytes != size) {
+        printf("bv_write returned unexpected number of bytes: expected %ld got %ld\n", size, bytes);
+        ret -= 1;
+    }
 
     printf("flushing\n");
     bv_flush(client, filename);
@@ -59,10 +64,14 @@ int main(int argc, char **argv)
     off_t offsets[3] = {0, 4, 8};
     uint64_t sizes[3] = {2, 2, 2};
     char compare[] = "Heo ch";
-    bv_read(client, filename, 1, &read_address, &read_size, 3, offsets, sizes);
+    bytes = bv_read(client, filename, 1, &read_address, &read_size, 3, offsets, sizes);
     if (strcmp(compare, read_address) != 0) {
         printf("Error: Expected: %s got: %s\n", compare, read_address);
         ret -= -1;
+    }
+    if (bytes != 6) {
+        printf("Error: bv_read returned unexpected number of bytes: expected %d got %ld\n", 6, bytes);
+        ret -=1;
     }
 
     printf("Longer write\n");
@@ -72,7 +81,11 @@ int main(int argc, char **argv)
     write_size = 15000;
     offset = 20;
     size = 15000;
-    bv_write(client, filename, 1, &write_address, &write_size, 1, &offset, &size);
+    bytes = bv_write(client, filename, 1, &write_address, &write_size, 1, &offset, &size);
+    if (bytes != size) {
+        printf("Error: bv_write returned unexpected number of bytes: exptcted %ld got %ld\n", size, bytes);
+        ret -=1;
+    }
 
     printf("Longer read\n");
     int *cmpbuf = malloc(15000);
@@ -80,13 +93,17 @@ int main(int argc, char **argv)
     read_size = 15000;
     offset = 20;
     size = 15000;
-    bv_read(client, filename,1, &read_address, &read_size, 1, &offset, &size);
+    bytes = bv_read(client, filename,1, &read_address, &read_size, 1, &offset, &size);
     for (int i=0; i< 15000/sizeof(int); i++) {
         if (bigbuf[i] != cmpbuf[i]) {
-            printf("Expected %d got %d\n", bigbuf[i], cmpbuf[i]);
+            printf("Error at %d: Expected %d got %d\n", i, bigbuf[i], cmpbuf[i]);
             ret -= -1;
             break;
         }
+    }
+    if (bytes != size) {
+        printf("Error: bv_read returned unexpected number of bytes: exptcted %ld got %ld\n", size, bytes);
+        ret -=1;
     }
     free(bigbuf);
     free(cmpbuf);
