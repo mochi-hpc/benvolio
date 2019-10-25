@@ -46,13 +46,14 @@ int main(int argc, char **argv)
     char *proto=NULL;
     char *statefile=NULL;
     int bufsize=1024;
+    int xfersize=1024;
     int nthreads=4;
     int nstreams=4;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    while ( (c = getopt(argc, argv, "p:b:s:t:f:" )) != -1) {
+    while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
         switch (c) {
             case 'p':
                 proto = strdup(optarg);
@@ -69,8 +70,11 @@ int main(int argc, char **argv)
             case 'f':
                 statefile = strdup(optarg);
                 break;
+            case 'x':
+                xfersize = atoi(optarg);
+                break;
             default:
-                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s streams] [-f statefile]\n", argv[0]);
+                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s streams] [-f statefile] [-x xfersize]\n", argv[0]);
                 exit(-1);
         }
     }
@@ -92,7 +96,7 @@ int main(int argc, char **argv)
     if (rank == 0)
         service_config_store(statefile, gid);
 
-    ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, bufsize, &bv_id);
+    ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, bufsize, xfersize, &bv_id);
     free(proto);
     free(statefile);
 
