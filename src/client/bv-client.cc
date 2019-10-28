@@ -284,6 +284,7 @@ ssize_t bv_write(bv_client_t client, const char *filename,
 
     write_time = ABT_get_wtime() - write_time;
     client->statistics.client_write_time += write_time;
+    client->statistics.client_bytes_written += ret;
 
     return ret;
 }
@@ -301,6 +302,7 @@ ssize_t bv_read(bv_client_t client, const char *filename,
 
     read_time = ABT_get_wtime() - read_time;
     client->statistics.client_read_time += read_time;
+    client->statistics.client_bytes_read += ret;
 
     return ret;
 }
