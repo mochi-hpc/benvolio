@@ -139,7 +139,7 @@ static void write_ult(void *_args)
         hg_bulk_t local_bulk;
         hg_uint32_t actual_count;
 
-        double bulk_time, io_time, total_io_time;
+        double bulk_time, io_time, total_io_time=0.0;
         int write_count=0;
         /* Adopting same aproach as 'bake-server.c' : we will create lots of ULTs,
          * some of which might not end up doing anything */
@@ -281,7 +281,7 @@ static void read_ult(void *_args)
         hg_bulk_t local_bulk;
         hg_uint32_t actual_count;
 
-        double bulk_time, io_time, total_io_time;
+        double bulk_time, io_time, total_io_time=0.0;
         int read_count = 0;
         /* Adopting same aproach as 'bake-server.c' : we will create lots of ULTs,
          * some of which might not end up doing anything */
@@ -421,6 +421,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     tl::mutex    stats_mutex;
     tl::mutex    size_mutex;
     tl::mutex    fd_mutex;
+
+    /* handles to RPC objects so we can clean them up in destructor */
+   std::vector<tl::remote_procedure> rpcs;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
@@ -646,14 +649,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
              * available to this provider into pool objects of that size */
             margo_bulk_pool_create(engine->get_margo_instance(), bufsize/xfersize, xfersize, HG_BULK_READWRITE, &mr_pool);
 
-            define("write", &bv_svc_provider::process_write, pool);
-            define("read", &bv_svc_provider::process_read, pool);
-            define("stat", &bv_svc_provider::getstats);
-            define("delete", &bv_svc_provider::del);
-            define("flush", &bv_svc_provider::flush);
-            define("statistics", &bv_svc_provider::statistics);
-            define("size", &bv_svc_provider::getsize);
-            define("declare", &bv_svc_provider::declare);
+            rpcs.push_back(define("write", &bv_svc_provider::process_write, pool));
+            rpcs.push_back(define("read", &bv_svc_provider::process_read, pool));
+            rpcs.push_back(define("stat", &bv_svc_provider::getstats));
+            rpcs.push_back(define("delete", &bv_svc_provider::del));
+            rpcs.push_back(define("flush", &bv_svc_provider::flush));
+            rpcs.push_back(define("statistics", &bv_svc_provider::statistics));
+            rpcs.push_back(define("size", &bv_svc_provider::getsize));
+            rpcs.push_back(define("declare", &bv_svc_provider::declare));
 
         }
     void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
@@ -669,6 +672,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ~bv_svc_provider() {
+        for(auto x : rpcs)
+            x.deregister();
+
         wait_for_finalize();
         margo_bulk_pool_destroy(mr_pool);
     }

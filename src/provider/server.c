@@ -13,10 +13,15 @@ static void finalize_abtio(void* data) {
     abt_io_finalize(abtio);
 }
 
+typedef struct {
+    ssg_group_id_t g_id;
+    margo_instance_id m_id;
+} finalize_args_t;
 static void finalized_ssg_group_cb(void* data)
 {
-    ssg_group_id_t gid = *((ssg_group_id_t*)data);
-    ssg_group_destroy(gid);
+    finalize_args_t *args = (finalize_args_t *)data;
+    ssg_group_destroy(args->g_id);
+    ssg_finalize();
 }
 
 void print_address(margo_instance_id mid)
@@ -30,9 +35,9 @@ void print_address(margo_instance_id mid)
     printf("Server running at address %s\n", addr_str);
 }
 
-void service_config_store(char *filename, ssg_group_id_t gid)
+void service_config_store(char *filename, ssg_group_id_t gid, int count)
 {
-    ssg_group_id_store(filename, gid);
+    ssg_group_id_store(filename, gid, count);
 }
 int main(int argc, char **argv)
 {
@@ -40,7 +45,7 @@ int main(int argc, char **argv)
     abt_io_instance_id abtio;
     bv_svc_provider_t bv_id;
     int ret;
-    int rank;
+    int rank, nprocs;
     ssg_group_id_t gid;
     int c;
     char *proto=NULL;
@@ -52,6 +57,7 @@ int main(int argc, char **argv)
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
     while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
         switch (c) {
@@ -87,20 +93,23 @@ int main(int argc, char **argv)
     abtio = abt_io_init(nthreads);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
-    ret = ssg_init(mid);
+    ret = ssg_init();
     ASSERT(ret == 0, "ssg_init() failed (ret = %d)\n", ret);
-    gid = ssg_group_create_mpi(BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL);
-    ASSERT(gid != SSG_GROUP_ID_NULL, "ssg_group_create_mpi() failed (ret = %s)","SSG_GROUP_ID_NULL");
-    margo_push_finalize_callback(mid, &finalized_ssg_group_cb, (void*)&gid);
+    gid = ssg_group_create_mpi(mid, BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL, NULL);
+    ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_mpi() failed (ret = %s)","SSG_GROUP_ID_NULL");
+    finalize_args_t args = {
+        .g_id = gid,
+        .m_id = mid
+    };
+    margo_push_prefinalize_callback(mid, &finalized_ssg_group_cb, (void*)&args);
 
     if (rank == 0)
-        service_config_store(statefile, gid);
+        service_config_store(statefile, gid, nprocs);
 
     ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, bufsize, xfersize, &bv_id);
     free(proto);
     free(statefile);
 
     margo_wait_for_finalize(mid);
-    margo_finalize(mid);
     MPI_Finalize();
 }

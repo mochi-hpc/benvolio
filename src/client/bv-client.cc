@@ -14,6 +14,19 @@
 #include <assert.h>
 namespace tl = thallium;
 
+typedef struct {
+    ssg_group_id_t g_id;
+    margo_instance_id m_id;
+} finalize_args_t;
+static void finalized_ssg_group_cb(void* data)
+{
+    finalize_args_t *args = (finalize_args_t *)data;
+    ssg_group_unobserve(args->g_id);
+    ssg_finalize();
+    free(args);
+}
+
+
 #define MAX_PROTO_LEN 24
 
 struct bv_client {
@@ -80,32 +93,40 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
 
 
     /* scalable read-and-broadcast of group information: only one process reads
-     * cfg from file system.  These routines can all be called before ssg_init */
+     * cfg from file system.  These routines can not be called before ssg_init,
+     * but that's ok because ssg_init no longer takes a margo id */
     MPI_Comm_dup(comm, &dupcomm);
     MPI_Comm_rank(dupcomm, &rank);
+    ssg_init();
     uint64_t ssg_serialize_size;
-    ssg_group_id_t ssg_gid;
+    int provider_count=1;
+    ssg_group_id_t ssg_gids[1]; // not sure how many is "too many"
     ssg_group_buf = (char *) malloc(1024); // how big do these get?
     if (rank == 0) {
-        ret = ssg_group_id_load(cfg_file, &ssg_gid);
+        ret = ssg_group_id_load(cfg_file, &provider_count, ssg_gids);
+        if (ret != SSG_SUCCESS) fprintf(stderr, "ssg_group_id_load: %d\n", ret);
         assert (ret == SSG_SUCCESS);
-        ssg_group_id_serialize(ssg_gid, &ssg_group_buf, &ssg_serialize_size);
+        ssg_group_id_serialize(ssg_gids[0], provider_count, &ssg_group_buf, &ssg_serialize_size);
     }
-    MPI_Bcast(&ssg_serialize_size, 1, MPI_UINT64_T, 0, dupcomm);
+    MPI_Bcast(&ssg_serialize_size, provider_count, MPI_UINT64_T, 0, dupcomm);
     MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, dupcomm);
     MPI_Comm_free(&dupcomm);
-    ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &ssg_gid);
-    addr_str = ssg_group_id_get_addr_str(ssg_gid);
+    ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &provider_count, ssg_gids);
+    addr_str = ssg_group_id_get_addr_str(ssg_gids[0], 0);
     char * proto = get_proto_from_addr(addr_str);
     if (proto == NULL) return NULL;
 
 
     auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE);
-    bv_client *client = new bv_client(theEngine, ssg_gid);
+    bv_client *client = new bv_client(theEngine, ssg_gids[0]);
 
-    ssg_init(client->engine->get_margo_instance());
+    finalize_args_t *args = (finalize_args_t *)malloc(sizeof(finalize_args_t));
+    args->g_id = client->gid;
 
-    ret = ssg_group_attach(client->gid);
+    args->m_id = client->engine->get_margo_instance();
+    margo_push_prefinalize_callback(client->engine->get_margo_instance(), &finalized_ssg_group_cb, (void *)args);
+
+    ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "ssg_group attach: (%d)\n", ret);
         assert (ret == SSG_SUCCESS);
@@ -113,7 +134,8 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
     nr_targets = ssg_get_group_size(client->gid);
 
     for (i=0; i< nr_targets; i++) {
-        tl::endpoint server(*(client->engine), ssg_get_addr(client->gid, i) );
+        tl::endpoint server(*(client->engine),
+             ssg_get_group_member_addr(client->gid, ssg_get_group_member_id_from_rank(client->gid, i) ));
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
 
@@ -139,12 +161,7 @@ int bv_finalize(bv_client_t client)
 {
     if (client == NULL) return 0;
 
-    ssg_group_detach(client->gid);
-    ssg_finalize();
-    /* cleaning up endpoints first because endpoints need the engine to be able
-     * to cleanly delete themselves */
-    client->targets.erase(client->targets.begin(), client->targets.end());
-    delete client->engine;
+    ssg_group_unobserve(client->gid);
     delete client;
     return 0;
 }
