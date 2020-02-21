@@ -22,7 +22,9 @@ static void finalized_ssg_group_cb(void* data)
 {
     finalize_args_t *args = (finalize_args_t *)data;
     ssg_group_unobserve(args->g_id);
-    ssg_finalize();
+    // do not finalize ssg here.  because benvolio initializes ssg before
+    // margo, bv needs to finalize ssg after margo_finalize (or in this case,
+    // after deleting the thallium engine
     free(args);
 }
 
@@ -65,6 +67,21 @@ struct bv_client {
         declare_op(engine->define("declare")),
         gid(group) {}
 
+    // writing our own destructor so we can ensure nothing that needs thallium
+    // to clean itself up tries to do so after thallium engine is deleted
+    ~bv_client() {
+        read_op.deregister();
+        write_op.deregister();
+        stat_op.deregister();
+        delete_op.deregister();
+        flush_op.deregister();
+        statistics_op.deregister();
+        size_op.deregister();
+        declare_op.deregister();
+
+        targets.erase(targets.begin(), targets.end());
+        delete engine;
+    }
 };
 
 typedef enum {
@@ -112,12 +129,14 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
     MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, dupcomm);
     MPI_Comm_free(&dupcomm);
     ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &provider_count, ssg_gids);
+    free(ssg_group_buf);
     addr_str = ssg_group_id_get_addr_str(ssg_gids[0], 0);
     char * proto = get_proto_from_addr(addr_str);
     if (proto == NULL) return NULL;
 
 
     auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE);
+    free(addr_str);
     bv_client *client = new bv_client(theEngine, ssg_gids[0]);
 
     finalize_args_t *args = (finalize_args_t *)malloc(sizeof(finalize_args_t));
@@ -128,7 +147,7 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
 
     ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "ssg_group attach: (%d)\n", ret);
+        fprintf(stderr, "ssg_group attach: (%d) Is remote provider running?\n", ret);
         assert (ret == SSG_SUCCESS);
     }
     nr_targets = ssg_get_group_size(client->gid);
@@ -138,9 +157,6 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
              ssg_get_group_member_addr(client->gid, ssg_get_group_member_id_from_rank(client->gid, i) ));
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
-
-    free(addr_str);
-    free(ssg_group_buf);
 
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
@@ -160,9 +176,17 @@ int bv_delete(bv_client_t client, const char *file)
 int bv_finalize(bv_client_t client)
 {
     if (client == NULL) return 0;
+    // cleanup is kind of all over the place:
+    // - we remove the client from the ssg group in a margo prefinalize callback.
+    // - we finalize margo when thallium's destructor runs.
+    // - We call ssg_finalize at the very end
 
-    ssg_group_unobserve(client->gid);
+    // ssg_finalize happens outside of the callback: in our model, we initiated
+    // Argobots through ssg_init, so we need to call ssg_finalize after we tear
+    // down margo
     delete client;
+    ssg_finalize();
+
     return 0;
 }
 

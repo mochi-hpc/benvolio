@@ -672,13 +672,19 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ~bv_svc_provider() {
-        for(auto x : rpcs)
-            x.deregister();
-
-        wait_for_finalize();
         margo_bulk_pool_destroy(mr_pool);
     }
 };
+
+static void bv_on_finalize(void *args)
+{
+    auto provider = static_cast<bv_svc_provider_t>(args);
+    for (auto x: provider->rpcs)
+        x.deregister();
+
+    delete provider->engine;
+    delete provider;
+}
 
 int bv_svc_provider_register(margo_instance_id mid,
         abt_io_instance_id abtio,
@@ -700,6 +706,7 @@ int bv_svc_provider_register(margo_instance_id mid,
     auto thallium_pool = tl::pool(handler_pool);
 
     auto bv_provider = new bv_svc_provider(thallium_engine, abtio, gid, provider_id, bufsize, xfersize, thallium_pool);
+    margo_provider_push_finalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
     *bv_id = bv_provider;
     return 0;
 }
