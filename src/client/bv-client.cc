@@ -154,7 +154,8 @@ bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
 
     for (i=0; i< nr_targets; i++) {
         tl::endpoint server(*(client->engine),
-             ssg_get_group_member_addr(client->gid, ssg_get_group_member_id_from_rank(client->gid, i) ));
+             ssg_get_group_member_addr(client->gid, ssg_get_group_member_id_from_rank(client->gid, i)),
+                 0 /* do not take ownership: ssg created these handles */ );
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
 
