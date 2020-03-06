@@ -3,7 +3,7 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 
-Name: MOCHIO
+Name: benvolio
 Description: A mochiservice for I/O: client-side library
 URL: https://xgitlab.cels.anl.gov/sds/benvolio
 Version: 0.0.1
