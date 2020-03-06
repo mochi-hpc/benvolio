@@ -479,6 +479,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         int fd = getfd(file, flags);
 	getfd_time = ABT_get_wtime() - getfd_time;
 	local_stats.getfd += getfd_time;
+        if (fd < 0) return fd;
 
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
         ABT_mutex_create(&args.mutex);
@@ -544,6 +545,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         int fd = getfd(file, flags);
 	getfd_time = ABT_get_wtime() - getfd_time;
 	local_stats.getfd += getfd_time;
+        if (fd < 0) return fd;
 
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
         ABT_mutex_create(&args.mutex);
@@ -619,6 +621,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         off_t oldpos=-1, pos=-1;
 	/* have to open read-write in case subsequent write call comes in */
         int fd = getfd(file, O_CREAT|O_RDONLY);
+        if (fd < 0) return fd;
         oldpos = lseek(fd, 0, SEEK_CUR);
         if (oldpos == -1)
             return -errno;
@@ -635,7 +638,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     int declare(const std::string &file, int flags, int mode)
     {
         int fd = getfd(file, flags, mode);
-        if (fd == -1) return -errno;
+        if (fd <  0) return fd;
         return 0;
     }
 
