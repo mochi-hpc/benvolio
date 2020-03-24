@@ -304,7 +304,7 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
     client->blocksize = response.blocksize;
     client->stripe_size = response.stripe_size;
     client->stripe_count = response.stripe_count;
-    return(1);
+    return(0);
 }
 
 int bv_statistics(bv_client_t client, int show_server)
