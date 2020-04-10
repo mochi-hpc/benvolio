@@ -136,7 +136,13 @@ static void write_ult(void *_args)
         void *local_buffer;
         size_t local_bufsize;
         size_t buf_cursor=0;
-        size_t xfered=0, nbytes, file_xfer=0;
+        size_t xfered=0; // total number of bytes moved in this thread
+        ssize_t nbytes;  // number of bytes for a single i/o operation
+        ssize_t file_xfer=0; // actual number of bytes sent to file system
+        ssize_t issued = 0; // how many bytes have we sent to abt_io.  We'll
+                            // collect the actual amount of data transfered
+                            // after we wait for all the operations
+
         hg_bulk_t local_bulk;
         hg_uint32_t actual_count;
 
@@ -155,6 +161,7 @@ static void write_ult(void *_args)
 
         mutex_time = ABT_get_wtime();
         ABT_mutex_lock(args->mutex);
+        // --------------------- args->mutex held ----------------//
         mutex_time = ABT_get_wtime() - mutex_time;
         args->stats.mutex_time += mutex_time;
         /* save these three for when we actually do I/O */
@@ -182,6 +189,8 @@ static void write_ult(void *_args)
         args->fileblk_cursor = new_file_cursor;
         args->client_cursor += client_xfer;
 
+
+        // --------------------- args->mutex released ----------------//
         ABT_mutex_unlock(args->mutex);
         file_idx = first_file_index;
         fileblk_cursor = first_file_cursor;
@@ -217,13 +226,13 @@ static void write_ult(void *_args)
         std::list<abt_io_op_t *> ops;
         std::list<ssize_t> rets;
         io_time = ABT_get_wtime();
-        while (file_idx < args->file_starts.size() && file_xfer < local_bufsize) {
-
+        while (file_idx < args->file_starts.size() && issued < local_bufsize) {
             // we might be able to only write a partial block
             rets.push_back(-1);
             nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
             abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
             ops.push_back(write_op);
+            issued += nbytes;
             
             write_count++;
 
