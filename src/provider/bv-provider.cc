@@ -688,7 +688,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rpcs.push_back(define("declare", &bv_svc_provider::declare));
 
         }
-    void dump_io_req(const std::string extra, tl::bulk &client_bulk, std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
+    void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
     {
         std::cout << "SERVER_REQ_DUMP:" << extra << "\n" << "   bulk size:"<< client_bulk.size() << "\n";
         std::cout << "  file offsets: " << file_starts.size() << " ";
