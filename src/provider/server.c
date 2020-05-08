@@ -1,8 +1,9 @@
 #include <margo.h>
 #include <abt-io.h>
 #include <ssg.h>
-#include <ssg-mpi.h>
+#include <ssg-pmix.h>
 #include <getopt.h>
+#include <pmix.h>
 #include "bv-provider.h"
 
 
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     abt_io_instance_id abtio;
     bv_svc_provider_t bv_id;
+    pmix_proc_t proc;
     int ret;
     int rank, nprocs;
     ssg_group_id_t gid;
@@ -54,10 +56,6 @@ int main(int argc, char **argv)
     int xfersize=1024;
     int nthreads=4;
     int nstreams=4;
-
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
     while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
         switch (c) {
@@ -93,17 +91,25 @@ int main(int argc, char **argv)
     abtio = abt_io_init(nthreads);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
+    ret = PMIx_Init(&proc, NULL, 0);
+    ASSERT(ret == PMIX_SUCCESS, "PMIx_Init failed (ret = %d)\n", ret);
+
     ret = ssg_init();
     ASSERT(ret == 0, "ssg_init() failed (ret = %d)\n", ret);
-    gid = ssg_group_create_mpi(mid, BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL, NULL);
-    ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_mpi() failed (ret = %s)","SSG_GROUP_ID_NULL");
+    gid = ssg_group_create_pmix(mid, BV_PROVIDER_GROUP_NAME, proc, NULL, NULL, NULL);
+    ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_pmix() failed (ret = %s)","SSG_GROUP_ID_NULL");
     finalize_args_t args = {
         .g_id = gid,
         .m_id = mid
     };
     margo_push_prefinalize_callback(mid, &finalized_ssg_group_cb, (void*)&args);
 
-    if (rank == 0)
+
+    nprocs = ssg_get_group_size(gid);
+    /* only one member of the SSG group needs to write out the file.  Clients
+     * will load and deserialize the file to find this ssg group and observe it */
+
+    if (ssg_get_group_self_rank(gid) == 0)
         service_config_store(statefile, gid, nprocs);
 
     ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, bufsize, xfersize, &bv_id);
@@ -111,5 +117,5 @@ int main(int argc, char **argv)
     free(statefile);
 
     margo_wait_for_finalize(mid);
-    MPI_Finalize();
+    PMIx_Finalize(NULL, 0);
 }
