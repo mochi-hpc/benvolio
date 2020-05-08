@@ -45,18 +45,24 @@ CPPFLAGS="$ABTIO_CFLAGS $CPPFLAGS"
 CFLAGS="$ABTIO_CFLAGS $CFLAGS"
 
 
-# check that SSG was compiled with MPI support
-AC_CHECK_LIB([ssg], [ssg_group_create_mpi],
-    [],
-    [AC_MSG_ERROR([SSG must be built with MPI support!])])
+# check that SSG was compiled with PMIX support
+AC_CHECK_LIB([ssg],
+	     [ssg_group_create_pmix],
+	     ,
+             [AC_MSG_ERROR([SSG must be built with PMIx support!])],
+             [-lpmix]
+)
 
-# check for MPI -- currently required for SSG on server daemons
-AC_MSG_CHECKING([If MPI programs can be compiled])
+# check for PMIx: required to boostrap server provider processes
+
+AC_CHECK_LIB([pmix], [PMIx_Init])
+AC_MSG_CHECKING([If PMIx programs can be compiled])
 AC_LINK_IFELSE(
-    [AC_LANG_PROGRAM([[#include<mpi.h>]], [[MPI_Init(0,0);]])],
-    [AC_MSG_RESULT([yes])],
-    [AC_MSG_RESULT([no])]
-    [AC_MSG_ERROR([MPI compiler support currently required!])])
+	       [AC_LANG_PROGRAM([[#include<pmix.h>]], [[PMIx_Init(NULL, NULL,0);]] )],
+	       [AC_DEFINE([HAVE_PMIX], [1], [Define to 1 if compiled with PMIx support])
+	           AC_MSG_RESULT([yes])],
+	       [AC_MSG_RESULT([no])]
+	       [AC_MSG_ERROR([PMIx required to launch remote providers]) ])
 
 AC_CHECK_LIB([lustreapi], [llapi_file_get_stripe])
 # checks for header files
