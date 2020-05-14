@@ -12,12 +12,13 @@ AM_DEFAULT_SOURCE_EXT = .c
 AM_CPPFLAGS += -I$(top_srcdir)/include
 LDADD  += $(top_builddir)/lib/libbv-client.la
 
-TESTPROGRAMS = tests/simple \
-	       tests/strided \
-               tests/null \
-               tests/overlap
+# tests/strided and tests/overlap are good tests but require MPI to build.
+# Take it out of TESTPROGRAMS but leave it in the distribution as examples
+TESTPROGRAMS = tests/simple
 
-check_PROGRAMS += ${TESTPROGRAMS}
+XFAIL_TESTPROGRAMS = tests/null
+
+check_PROGRAMS += ${TESTPROGRAMS} ${XFAIL_TESTPROGRAMS}
 
 EXTRA_DIST += $(top_srcdir)/tests/wrap_runs.sh
 
@@ -29,7 +30,6 @@ CLEANFILES += $(OUT_FILES) tests/core tests/core.* \
 
 LOG_COMPILER = $(top_srcdir)/tests/wrap_runs.sh
 
-TESTS += ${TESTPROGRAMS}
-
-
-
+TESTS += ${TESTPROGRAMS} ${XFAIL_TESTPROGRAMS}
+#XFAIL_TESTS is (generally) a subset of TESTS
+XFAIL_TESTS += ${XFAIL_TESTPROGRAMS}

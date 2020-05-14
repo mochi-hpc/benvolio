@@ -1,9 +1,7 @@
 #include <string.h>
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <bv.h>
-#include <mpi.h>
 
 
 #include <sys/types.h>
@@ -14,12 +12,13 @@
 
 int main(int argc, char **argv)
 {
-    MPI_Init(&argc, &argv);
     bv_client_t client=NULL;
     struct bv_stats stats;
     const char *write_address, *read_address;
     uint64_t write_size, read_size;
-    client = bv_init(MPI_COMM_WORLD, argv[1]);
+    bv_config_t cfg = bvutil_cfg_get(argv[1]);
+    client = bv_init(cfg);
+    bvutil_cfg_free(cfg);
     char msg[] = "Hello Mochi";
     char cmp[128] = "";
     uint64_t bytes;
@@ -119,6 +118,5 @@ int main(int argc, char **argv)
 #endif
 
     bv_finalize(client);
-    MPI_Finalize();
     return ret;
 }

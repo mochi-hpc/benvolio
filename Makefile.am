@@ -41,6 +41,7 @@ check_PROGRAMS=
 EXTRA_DIST=
 CLEANFILES=
 TESTS=
+XFAIL_TESTS=
 
 include $(top_srcdir)/tests/Makefile.subdir
 

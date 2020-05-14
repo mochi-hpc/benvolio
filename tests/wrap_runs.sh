@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Copyright (C) 2019, Northwestern University and Argonne National Laboratory
 # See COPYRIGHT notice in top-level directory.
@@ -9,9 +9,13 @@ NCLIENT=1
 
 OUT_FILE=`basename $1`
 
+# Would be nice to be ale to tie into SLURM or other PMIx-aware facilities
+prte --host localhost:8 &
+
 # Start server
-echo "mpiexec -np ${NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &"
-mpiexec -np {NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &
+sleep 1
+echo "prun -np ${NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &"
+prun -np ${NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &
 
 echo "SERVER_PID=$!"
 SERVER_PID=$!
@@ -35,14 +39,15 @@ do
 done
 
 # Run test program
-echo "mpiexec -np ${NCLIENT} $1 ${OUT_FILE}.svc ${OUT_FILE}.bin"
-mpiexec -np ${NCLIENT} $1 ${OUT_FILE}.svc ${OUT_FILE}.bin
+echo "prun -np ${NCLIENT} $1 ${OUT_FILE}.svc ${OUT_FILE}.bin"
+prun -np ${NCLIENT} $1 ${OUT_FILE}.svc ${OUT_FILE}.bin
 RET_VAL=$?
 echo "RET_VAL=${RET_VAL}"
 
 # Stop server
 echo "src/client/bv-shutdown ${OUT_FILE}.svc"
-src/client/bv-shutdown ${OUT_FILE}.svc
+prun -np 1 src/client/bv-shutdown ${OUT_FILE}.svc
+prun -terminate
 
 # Return result
 exit ${RET_VAL}

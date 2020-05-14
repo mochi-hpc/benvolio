@@ -1,6 +1,5 @@
 
 #include <bv.h>
-#include <mpi.h>
 #include <stdlib.h>
 
 /* what if we send a null buffer to the server? */
@@ -13,7 +12,6 @@ int main(int argc, char **argv)
     char *filename;
     off_t offset=0;
 
-    MPI_Init(&argc, &argv);
 
     int *writebuf;
 
@@ -22,12 +20,13 @@ int main(int argc, char **argv)
     else
         filename = "dummy";
 
-    client = bv_init(MPI_COMM_WORLD, argv[1]);
+    bv_config_t cfg = bvutil_cfg_get(argv[1]);
+    client = bv_init(cfg);
+    bvutil_cfg_free(cfg);
 
     writebuf = NULL;
 
     ret = bv_write(client, filename, 1, (const char **)&writebuf, &size, 1, &offset, &size);
 
-    MPI_Finalize();
     return (ret != 0 ? -1 : 0);
 }

@@ -11,7 +11,7 @@
 
 int main(int argc, char **argv) {
     int ret = 0;
-    int i, j;
+    int i;
     int rank, np;
     bv_client_t client=NULL;
     struct bv_stats stats;
@@ -39,7 +39,10 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
 
-    client = bv_init(MPI_COMM_WORLD, argv[1]);
+    bv_config_t cfg = bvutil_cfg_get(argv[1]);
+    client = bv_init(cfg);
+    bvutil_cfg_free(cfg);
+
 
     printf("stat:");
     bv_stat(client, filename, &stats);
