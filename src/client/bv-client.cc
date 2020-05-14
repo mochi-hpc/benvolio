@@ -3,7 +3,6 @@
 #include <utility>
 #include <vector>
 #include <ssg.h>
-#include <mpi.h>
 #include "io_stats.h"
 #include "file_stats.h"
 #include "calc-request.h"
@@ -13,6 +12,8 @@
 
 #include <assert.h>
 namespace tl = thallium;
+
+static int Ssg_Initialized=0;
 
 typedef struct {
     ssg_group_id_t g_id;
@@ -28,6 +29,23 @@ static void finalized_ssg_group_cb(void* data)
     free(args);
 }
 
+
+struct bv_config {
+    size_t size;
+    int nr_providers;
+    /* we don't need to get this perfect: if we under-estimate it just means we
+     * know about fewer servers until we boostrap.  50 is entirely arbitrary */
+    static const int max_providers = 50;
+    ssg_group_id_t group_ids[max_providers];
+
+    /* How big is a typical ssg record?
+     * - summit: 60 bytes
+     * - lapotp: 50 bytes
+     * - theta : 80 bytes
+     * call it 200 bytes per record. */
+    char buf[max_providers*200];
+    bv_config() : nr_providers(max_providers) {};
+};
 
 #define MAX_PROTO_LEN 24
 
@@ -99,37 +117,32 @@ static char * get_proto_from_addr(char *addr_str)
     *q = '\0';
     return p;
 }
-bv_client_t bv_init(MPI_Comm comm, const char * cfg_file)
+bv_client_t bv_init(bv_config_t config)
 {
     char *addr_str;
     int rank;
     int ret, i, nr_targets;
     char *ssg_group_buf;
     double init_time = ABT_get_wtime();
-    MPI_Comm dupcomm;
 
 
-    /* scalable read-and-broadcast of group information: only one process reads
-     * cfg from file system.  These routines can not be called before ssg_init,
-     * but that's ok because ssg_init no longer takes a margo id */
-    MPI_Comm_dup(comm, &dupcomm);
-    MPI_Comm_rank(dupcomm, &rank);
-    ssg_init();
-    uint64_t ssg_serialize_size;
-    int provider_count=1;
-    ssg_group_id_t ssg_gids[1]; // not sure how many is "too many"
-    ssg_group_buf = (char *) malloc(1024); // how big do these get?
-    if (rank == 0) {
-        ret = ssg_group_id_load(cfg_file, &provider_count, ssg_gids);
-        if (ret != SSG_SUCCESS) fprintf(stderr, "ssg_group_id_load: %d\n", ret);
-        assert (ret == SSG_SUCCESS);
-        ssg_group_id_serialize(ssg_gids[0], provider_count, &ssg_group_buf, &ssg_serialize_size);
+    /* we used to do a scalable read-and-broadcast inside bv_init.  I then
+     * decided the scalable broadcast part of that was better handled outside
+     * of benvolio.  Let the MPI-IO driver or HDF5 vol deal with exchanging
+     * data among clients in whatever way it thinks is best (probably a
+     * read-and-broadcast).  Complicates client a bit, but eliminates a
+     * benvolio dependency on MPI -- making it easier to package and deploy.
+     * Does mean we have two places where we might have to initialize ssg */
+
+    if (!Ssg_Initialized) ssg_init();
+    ssg_group_id_t ssg_gids[config->nr_providers];
+    ssg_group_id_deserialize(config->buf, config->size, &config->nr_providers, ssg_gids);
+    if (*ssg_gids == SSG_GROUP_ID_INVALID)
+    {
+        fprintf(stderr, "Error: Unable to deserialize SSG group ID\n");
+        return NULL;
     }
-    MPI_Bcast(&ssg_serialize_size, provider_count, MPI_UINT64_T, 0, dupcomm);
-    MPI_Bcast(ssg_group_buf, ssg_serialize_size, MPI_CHAR, 0, dupcomm);
-    MPI_Comm_free(&dupcomm);
-    ssg_group_id_deserialize(ssg_group_buf, ssg_serialize_size, &provider_count, ssg_gids);
-    free(ssg_group_buf);
+
     addr_str = ssg_group_id_get_addr_str(ssg_gids[0], 0);
     char * proto = get_proto_from_addr(addr_str);
     if (proto == NULL) return NULL;
@@ -352,4 +365,37 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
         ret += result;
     }
     return ret;
+}
+
+bv_config_t bvutil_cfg_get(const char *filename)
+{
+    bv_config_t cfg = new (bv_config);
+
+    int ret;
+
+    /* can't make any ssg calls until calling ssg_init(), so even though we are
+     * out of the main bv_init path, we still have to set up some ssg
+     * structures */
+    if (!Ssg_Initialized) ssg_init();
+
+    ret = ssg_group_id_load(filename, &cfg->nr_providers, cfg->group_ids);
+    if (ret != SSG_SUCCESS) fprintf(stderr, "ssg_group_id_load: %d\n", ret);
+    assert (ret == SSG_SUCCESS);
+    char *buf;
+    ssg_group_id_serialize(cfg->group_ids[0], cfg->nr_providers, &buf, &cfg->size);
+    /* ssg_group_id_serialize internally allocated a buffer storing the group
+     * information.  Get that data into our config object in a form that is
+     * easily shared with other processes */
+    memcpy(cfg->buf, buf, cfg->size);
+    free (buf);
+
+    return cfg;
+}
+
+ssize_t bvutil_cfg_getsize(bv_config_t cfg) {
+    return (sizeof (struct bv_config));
+}
+
+void bvutil_cfg_free(bv_config_t cfg) {
+    delete cfg;
 }

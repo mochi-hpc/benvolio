@@ -8,12 +8,12 @@
 int main(int argc, char **argv)
 {
     int ret = 0;
-    MPI_Init(&argc, &argv);
-    bv_client_t client= bv_init(MPI_COMM_SELF, argv[1]);
+    bv_config_t cfg = bvutil_cfg_get(argv[1]);
+    bv_client_t client= bv_init(cfg);
+    bvutil_cfg_free(cfg);
 
     ret = bv_shutdown(client);
 
     bv_finalize(client);
-    MPI_Finalize();
     return ret;
 }

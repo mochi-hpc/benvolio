@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <aio.h>
-#include <mpi.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -15,6 +14,31 @@ extern "C"
 
 typedef struct bv_client * bv_client_t;
 
+typedef struct bv_config *bv_config_t;
+
+/**
+ * we leave it up to the client how to efficiently generate a bv_config object.
+ * I would suggest reading the config file on one process and broadcasting the
+ * result to everyone else, though for a small number of clients the "everyone
+ * reads" approach will be ok.
+ *
+ * benvolio is providing these helper routines for obtaining group data from
+ * the file
+ *
+ * Caller responsible for freeing `bv_config` object  with `bvutil_cfg_free()`
+ */
+bv_config_t bvutil_cfg_get(const char *filename);
+
+/**
+ * how big is the memory region associated with the opaque pointer?
+ */
+ssize_t bvutil_cfg_getsize(bv_config_t cfg);
+
+/**
+ * free the memory region associated with the opaque pointer
+ */
+void bvutil_cfg_free(bv_config_t cfg);
+
 /* easy to imagine more sophisticated distribution schemes
  * - even: hint a final file size and then divide that size across the N servers
  * - block: first N bytes to server 0, next N bytes to server 1, etc
@@ -22,7 +46,7 @@ typedef struct bv_client * bv_client_t;
 int bv_setchunk(const char *file, ssize_t nbytes);
 
 /* "init" might be a place to pass in distribution information too? */
-bv_client_t bv_init(MPI_Comm comm, const char * ssg_statefile);
+bv_client_t bv_init(bv_config_t cfg);
 
 /* clean up clients.  Must be the absolute last routine called */
 int bv_finalize(bv_client_t client);
