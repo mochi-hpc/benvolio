@@ -15,7 +15,11 @@ build MPICH with ROMIO with benvolio support.
 
 - check out https://github.com/roblatham00/mpich/tree/benvolio
 
-- ensure `pkg-config` knows about the `bv-client` package.  ROMIO's configure will pick up the necessary CFLAGS and LDFLAGS
+- ensure `pkg-config` knows about the `bv-client` package.  ROMIO's configure
+  will pick up the necessary CFLAGS and LDFLAGS . Double check that not only
+  `bv-client` but also the libraries benvolio depends on are available too
+  (thallium, abt-io, ssg).  If you are using spack to manage dependencies, you
+  can do `spack load -r mochi-ssg mochi-abt-io mochi-thallium`
 
 - add 'bv' to the `--with-file-system` list: e.g. --with-file-system=lustre+bv
 
