@@ -86,4 +86,4 @@ the provider to shut itself down.  Then we stop the prrte daemons with the
 '-terminate' command
 
     $ ./src/client/bv-shutdown bv.svc
-    $ prun –terminate
+    $ prun -terminate
