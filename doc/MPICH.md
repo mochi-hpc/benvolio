@@ -1,22 +1,17 @@
 # Benvolio and MPICH
 
-Let's say you want to build the IOR benchmark to try out the benvolio ROMIO
-driver.  Unfortunately that will probably require building MPICH twice.
-1. benvolio requires an MPI implementation so that it can bootstrap SSG (might
-   be a good reason to look at PMIx)
-1. The benvolio clients communicate with Mercury, not MPI, so it's
-   theoretically possible to build just the server with an MPI implementation
-   and the build the clients as part of another.  I'll have to update the build
-   system to pull that off.
+We used to require building MPICH twice, but that is no longer necessary now
+that benvolio uses PMIx to launch the providers.
 
-To avoid invalid communicators (when a program linked with one MPI
-implementation tries to use another one), I build benvolio with MPICH and then
-build MPICH with ROMIO with benvolio support.  
+- If you are not familiar with building MPICH, please see
+  https://wiki.mpich.org/mpich/index.php/Getting_And_Building_MPICH for how to build it.
 
 - check out https://github.com/roblatham00/mpich/tree/benvolio
 
-- ensure `pkg-config` knows about the `bv-client` package.  ROMIO's configure
-  will pick up the necessary CFLAGS and LDFLAGS . Double check that not only
+- Before you build MPICH, ensure `pkg-config` knows about the `bv-client`
+  package.  ROMIO's configure will pick up the necessary CFLAGS and LDFLAGS,
+  but if `pkg-config --libs bv-client` returns an error, ROMIO configure will
+  just plow along without benvolio support. Double check that not only
   `bv-client` but also the libraries benvolio depends on are available too
   (thallium, abt-io, ssg).  If you are using spack to manage dependencies, you
   can do `spack load -r mochi-ssg mochi-abt-io mochi-thallium`
@@ -28,3 +23,6 @@ build MPICH with ROMIO with benvolio support.
 - set the environment variable BV_STATEFILE to point to the server statefile.
 
 - if you want extra information about benvolio behavior, set the BV_SHOW_STATS
+
+- benvolio is not a true file system, so ROMIO automagic file system detection
+  will not work.  Instead, you will have to prefix file names with 'benvolio:'.
