@@ -17,7 +17,7 @@ that benvolio uses PMIx to launch the providers.
   (thallium, abt-io, ssg).  If you are using spack to manage dependencies, you
   can do `spack load -r mochi-ssg mochi-abt-io mochi-thallium`
 
-- add 'bv' to the `--with-file-system` list: e.g. --with-file-system=lustre+bv
+- add 'benvolio' to the `--with-file-system` list: e.g. --with-file-system=lustre+benvolio
 
 ## Running benvolio on workstations or laptop
 
