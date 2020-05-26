@@ -7,7 +7,11 @@ that benvolio uses PMIx to launch the providers.
 - If you are not familiar with building MPICH, please see
   https://wiki.mpich.org/mpich/index.php/Getting_And_Building_MPICH for how to build it.
 
-- check out https://github.com/roblatham00/mpich/tree/benvolio
+- check out https://github.com/roblatham00/mpich/tree/benvolio or add it as a remote repository.
+
+- The benvolio work is in the 'benvolio' branch of the above fork.  For example, assuming you have named your remote repository `github-robl`
+
+    git checkout -b benvolio github-robl/benvolio
 
 - Before you build MPICH, ensure `pkg-config` knows about the `bv-client`
   package.  ROMIO's configure will pick up the necessary CFLAGS and LDFLAGS,
