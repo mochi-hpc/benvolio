@@ -26,6 +26,14 @@ int main(int argc, char **argv)
     char *filename;
     ssize_t filesize;
 
+    bv_declare(client, "/home/qkt561/mpich_develop/E3SM-IO/datasets/f_case_866x72_16p.nc" , O_RDWR|O_CREAT, 0644);
+    char* local_buf = (char*) malloc(sizeof(char)*240305);
+    const char* local_addr = local_buf;
+    read_size = 240304;
+    off_t zero_off = 0;
+    bytes = bv_read(client, "/home/qkt561/mpich_develop/E3SM-IO/datasets/f_case_866x72_16p.nc", 1, &local_addr, &read_size, 1, &zero_off, &read_size);
+    printf("finished reading netcdf file %llu\n", (long long unsigned)bytes);
+
     if (argc == 3)
         filename = argv[2];
     else
