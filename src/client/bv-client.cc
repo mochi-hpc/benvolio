@@ -258,7 +258,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
      * over targets without any work to do for this request  */
     for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
-
+        //printf("%s is delivered to provider %d\n", filename, i);
         my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
         responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
     }

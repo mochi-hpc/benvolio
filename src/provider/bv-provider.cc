@@ -60,10 +60,12 @@ typedef struct {
     std::map<std::string, int> *register_table;
     std::map<std::string, int> *cache_block_reserve_table;
     std::map<std::string, double> *cache_timestamps;
+    std::map<std::string, int> *fd_table;
 
     tl::mutex *cache_mutex;
     int *shutdown;
     int *cache_block_used;
+    int ssg_rank;
 } Cache_info;
 /**
  * Toolkits for describing provider's cache information for a specific file.
@@ -86,7 +88,7 @@ typedef struct {
     int stripe_count;
     int stripe_size;
     size_t file_size;
-    Cache_info *cache_info;
+    //Cache_info *cache_info;
 } Cache_file_info;
 
 static void cache_register(Cache_info cache_info, std::string file, Cache_file_info *cache_file_info);
@@ -97,15 +99,17 @@ static void cache_write_back(Cache_file_info cache_file_info);
 static void cache_flush(Cache_file_info cache_file_info);
 //static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint64_t file_size, int stripe_size, int stripe_count);
 static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info, off_t file_start, uint64_t file_size);
+static void cache_remove_file_flush(Cache_info cache_info, std::string file);
+static int cache_exist(Cache_info cache_info, std::string file);
 
 
 static int cache_exist(Cache_info cache_info, std::string file) {
     std::lock_guard<tl::mutex> guard(*(cache_info.cache_mutex));
-    return cache_info.cache_table->find(file) == cache_info.cache_table->end();
+    return cache_info.cache_table->find(file) != cache_info.cache_table->end();
 }
 
 static void cache_remove_file(Cache_info cache_info, std::string file) {
-    printf("removing cache for file %s\n", file.c_str());
+    printf("-------------------------removing cache for file %s\n", file.c_str());
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info.cache_table[0][file];
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
@@ -116,6 +120,7 @@ static void cache_remove_file(Cache_info cache_info, std::string file) {
     delete cache_info.cache_update_table[0][file];
     delete cache_info.cache_mutex_table[0][file];
     delete cache_info.cache_offset_list_table[0][file];
+
     cache_info.cache_table->erase(file);
     cache_info.cache_mutex_table->erase(file);
     cache_info.cache_update_table->erase(file);
@@ -124,11 +129,12 @@ static void cache_remove_file(Cache_info cache_info, std::string file) {
     cache_info.cache_block_reserve_table->erase(file);
     cache_info.register_table->erase(file);
     cache_info.cache_timestamps->erase(file);
+    cache_info.fd_table->erase(file);
 }
 
 static void cache_remove_file_flush(Cache_info cache_info, std::string file) {
     std::lock_guard<tl::mutex> guard(*(cache_info.cache_mutex));
-    if (cache_info.cache_table->find(file) == cache_info.cache_table->end() && cache_info.register_table[0][file] == 0) {
+    if (cache_info.cache_table->find(file) != cache_info.cache_table->end() && cache_info.register_table[0][file] == 0) {
         cache_remove_file(cache_info, file);
     }
 }
@@ -140,6 +146,7 @@ static void cache_deregister(Cache_info cache_info, std::string file) {
     if (cache_info.register_table[0][file] == 0 && cache_info.cache_block_reserve_table[0][file] <= BENVOLIO_CAHCE_MIN_N_BLOCKS) {
         cache_remove_file(cache_info, file);
     }
+
 }
 
 static void cache_register(Cache_info cache_info, std::string file, Cache_file_info *cache_file_info) {
@@ -153,6 +160,7 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
         if (cache_info.cache_block_used[0] >= BENVOLIO_CACHE_MAX_N_BLOCKS) {
+            printf("entered eager cache write-back mechanism!\n");
             std::map<std::string, std::map<off_t, std::pair<uint64_t, char*>*>*>::iterator it;
             std::vector<std::string> filenames;
             for ( it = cache_info.cache_table->begin(); it != cache_info.cache_table->end(); ++it ) {
@@ -172,7 +180,7 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
             cache_file_info->cache_block_reserved = MIN(cache_file_info->cache_block_reserved, (cache_file_info->file_size + BENVOLIO_CACHE_MAX_BLOCK_SIZE - 1) / BENVOLIO_CACHE_MAX_BLOCK_SIZE );
         }
 
-        printf("Registered cache block size of %llu, previously used %llu\n", (long long unsigned)cache_file_info->cache_block_reserved, (long long unsigned)cache_info.cache_block_used[0]);
+        printf("ssg_rank = %d, File %s, Registered cache block size of %llu, previously used %llu\n", cache_info.ssg_rank, file.c_str(), (long long unsigned)cache_file_info->cache_block_reserved, (long long unsigned)cache_info.cache_block_used[0]);
 
         cache_info.cache_block_used[0] += cache_file_info->cache_block_reserved;
         cache_info.register_table[0][file] = 1;
@@ -183,6 +191,8 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
         cache_info.cache_mutex_table[0][file] = cache_file_info->cache_mutex;
         cache_info.cache_offset_list_table[0][file] = cache_file_info->cache_offset_list;
         cache_info.cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
+	//Record file descriptor to global cache table (we may need to get it in unavailable contexts). We should only do this when the file is first met.
+	cache_info.fd_table[0][file] = cache_file_info->fd;
     } else {
         cache_file_info->cache_table = cache_info.cache_table[0][file];
         cache_file_info->cache_update_list = cache_info.cache_update_table[0][file];
@@ -192,7 +202,7 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
         cache_info.register_table[0][file] += 1;
         cache_info.cache_timestamps[0][file] = ABT_get_wtime();
 
-        printf("Retrieving registered cache block size of %llu\n", (long long unsigned)cache_file_info->cache_block_reserved);
+        printf("ssg_rank = %d, File %s, Retrieving registered cache block size of %llu\n", cache_info.ssg_rank, file.c_str(), (long long unsigned)cache_file_info->cache_block_reserved);
     }
 }
 
@@ -206,6 +216,7 @@ static void cache_init(Cache_info *cache_info) {
     cache_info->cache_block_reserve_table = new std::map<std::string, int>;
     cache_info->cache_mutex = new tl::mutex;
     cache_info->cache_timestamps = new std::map<std::string, double>;
+    cache_info->fd_table = new std::map<std::string, int>;
 
     cache_info->cache_block_used = (int*) malloc(sizeof(int)*2);
     cache_info->cache_block_used[0] = 0;
@@ -243,6 +254,7 @@ static void cache_finalize(Cache_info cache_info) {
     delete cache_info.register_table;
     delete cache_info.cache_block_reserve_table;
     delete cache_info.cache_timestamps;
+    delete cache_info.fd_table;
     free(cache_info.cache_block_used);
 }
 
@@ -450,11 +462,8 @@ static int cache_shutdown_flag(Cache_info cache_info) {
     return 0;
 }
 
-static int cache_resource_manager(Cache_info cache_info) {
+static int cache_resource_manager(Cache_info cache_info, abt_io_instance_id abt_id) {
     std::lock_guard<tl::mutex> guard(*(cache_info.cache_mutex));
-    if (cache_info.shutdown[0]) {
-        return 1;
-    }
     std::map<std::string, std::map<off_t, std::pair<uint64_t, char*>*>*>::iterator it;
     std::vector<std::string> filenames;
     for ( it = cache_info.cache_table->begin(); it != cache_info.cache_table->end(); ++it ) {
@@ -463,23 +472,37 @@ static int cache_resource_manager(Cache_info cache_info) {
     std::vector<std::string>::iterator it2;
     for ( it2 = filenames.begin(); it2 != filenames.end(); ++it2) {
         if (cache_info.register_table[0][*it2] == 0 && (ABT_get_wtime() - cache_info.cache_timestamps[0][*it2]) > BENVOLIO_CACHE_RESOURCE_REMOVE_TIME ) {
+            //Like a register function, we are pretty safe in this block because of the lock in this function.
+            Cache_file_info cache_file_info;
+            cache_file_info.io_type = BENVOLIO_CACHE_READ;
+            cache_file_info.fd = cache_info.fd_table[0][*it2];
+            cache_file_info.abt_id = abt_id;
+            cache_file_info.cache_table = cache_info.cache_table[0][*it2];
+            cache_file_info.cache_update_list = cache_info.cache_update_table[0][*it2];
+            cache_file_info.cache_mutex = cache_info.cache_mutex_table[0][*it2];
+            cache_file_info.cache_offset_list = cache_info.cache_offset_list_table[0][*it2];
+            cache_file_info.cache_block_reserved = cache_info.cache_block_reserve_table[0][*it2];
+
+            cache_write_back(cache_file_info);
             cache_remove_file(cache_info, *it2);
         }
     }
-    return 0;
+    return cache_info.shutdown[0];
 }
 
 struct resource_manager_args {
-    Cache_info cache_info;
     ABT_eventual eventual;
+    Cache_info cache_info;
+    abt_io_instance_id abt_id;
+    int ssg_rank;
 };
 
 static void cache_resource_manager(void *_args) {
     struct resource_manager_args *args = (struct resource_manager_args *)_args;
     int temp;
     while (1) {
-        temp = cache_resource_manager(args->cache_info);
-        //printf("resource management check for temp = %d\n", temp);
+        temp = cache_resource_manager(args->cache_info, args->abt_id);
+        printf("ssg_rank %d, resource management check for temp = %d\n", args->ssg_rank, temp);
         if (temp){
             break;
         }
@@ -1181,7 +1204,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return (stats);
     }
     int del(const std::string &file) {
-        //cache_remove_file_flush(cache_info, file);
+        cache_remove_file_flush(cache_info, file);
         int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
         return ret;
@@ -1202,7 +1225,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_write_back(cache_file_info);
         cache_deregister(cache_info, file);
         cache_remove_file_flush(cache_info, file);
-
+        printf("provider %d finished flushing\n",ssg_rank);
         return (fsync(fd));
     }
 
@@ -1254,8 +1277,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             ssg_size = ssg_get_group_size(gid);
             ssg_rank = ssg_get_group_self_rank(gid);
             cache_init(&cache_info);
+            cache_info.ssg_rank = ssg_rank;
 
             rm_args.cache_info = cache_info;
+            rm_args.abt_id = abt_id;
+            rm_args.ssg_rank = ssg_rank;
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
 
@@ -1273,6 +1299,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ~bv_svc_provider() {
+        printf("entered destroy function\n");
         cache_shutdown_flag(cache_info);
         ABT_eventual_wait(rm_args.eventual, NULL);
         ABT_eventual_free(&rm_args.eventual);
