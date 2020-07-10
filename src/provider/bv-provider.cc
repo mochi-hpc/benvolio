@@ -668,6 +668,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return 0;
     }
 
+   int ping()
+   {
+       return 0;
+   }
+
 
     bv_svc_provider(tl::engine *e, abt_io_instance_id abtio,
             ssg_group_id_t gid, const uint16_t provider_id, const int b, int x, tl::pool &pool)
@@ -686,6 +691,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rpcs.push_back(define("statistics", &bv_svc_provider::statistics));
             rpcs.push_back(define("size", &bv_svc_provider::getsize));
             rpcs.push_back(define("declare", &bv_svc_provider::declare));
+            rpcs.push_back(define("ping", &bv_svc_provider::ping));
 
         }
     void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)

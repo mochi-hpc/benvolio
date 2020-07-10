@@ -60,6 +60,8 @@ struct bv_client {
     tl::remote_procedure statistics_op;
     tl::remote_procedure size_op;
     tl::remote_procedure declare_op;
+    tl::remote_procedure ping_op;
+
     ssg_group_id_t gid;     // attaches to this group; not a member
     io_stats statistics;
 
@@ -83,6 +85,7 @@ struct bv_client {
         statistics_op(engine->define("statistics")),
         size_op(engine->define("size")),
         declare_op(engine->define("declare")),
+        ping_op(engine->define("ping")),
         gid(group) {}
 
     // writing our own destructor so we can ensure nothing that needs thallium
@@ -96,6 +99,7 @@ struct bv_client {
         statistics_op.deregister();
         size_op.deregister();
         declare_op.deregister();
+        ping_op.deregister();
 
         targets.erase(targets.begin(), targets.end());
         delete engine;
@@ -366,6 +370,14 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
         result = r.wait();
         ret += result;
     }
+    return ret;
+}
+
+int bv_ping(bv_client_t client)
+{
+    int ret = 0;
+    for (auto target : client->targets)
+        ret += client->ping_op.on(target)().as<int>();
     return ret;
 }
 

@@ -31,6 +31,9 @@ int main(int argc, char **argv)
     else
         filename = "dummy";
 
+    printf("ping: %s\n", bv_ping(client) ? "UP" : "DOWN");
+    ret = bv_ping(client);
+
     printf("delete:\n");
     bv_delete(client, filename);
 
