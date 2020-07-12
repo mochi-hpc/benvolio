@@ -25,7 +25,7 @@ int main(int argc, char **argv)
     int ret = 0;
     char *filename;
     ssize_t filesize;
-
+/*
     bv_declare(client, "/home/qkt561/mpich_develop/E3SM-IO/datasets/f_case_866x72_16p.nc" , O_RDWR|O_CREAT, 0644);
     printf("stat:");
     bv_stat(client, "/home/qkt561/mpich_develop/E3SM-IO/datasets/f_case_866x72_16p.nc", &stats);
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     off_t zero_off = 0;
     bytes = bv_read(client, "/home/qkt561/mpich_develop/E3SM-IO/datasets/f_case_866x72_16p.nc", 1, &local_addr, &read_size, 1, &zero_off, &read_size);
     printf("finished reading netcdf file %llu\n", (long long unsigned)bytes);
-
+*/
     if (argc == 3)
         filename = argv[2];
     else
