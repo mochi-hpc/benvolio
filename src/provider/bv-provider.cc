@@ -33,7 +33,7 @@
 #define BENVOLIO_CACHE_MAX_N_BLOCKS 8192
 #define BENVOLIO_CAHCE_MIN_N_BLOCKS 3
 #define BENVOLIO_CACHE_MAX_FILE 5
-#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 1024
+#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 332
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
@@ -135,6 +135,8 @@ typedef struct {
     int stripe_size;
     size_t file_size;
     Cache_stat *cache_stat;
+    /*Debug purpose*/
+    int ssg_rank;
     //Cache_info *cache_info;
 } Cache_file_info;
 
@@ -397,6 +399,16 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
         cache_info.register_table[0][file] += 1;
         cache_info.cache_timestamps[0][file] = ABT_get_wtime();
 
+        // The file size may not be correct for read after write because the write contents are still in the cache table. We need to iterate through the cache table to figure out the actual file size. This may not be the file size of the entire file, but at least the maximum boundary of this provider's file domain.
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
+            std::map<off_t, std::pair<uint64_t, char*>*>::iterator it;
+            std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_file_info->cache_table;
+            for ( it = cache_file_table->begin(); it != cache_file_table->end(); ++it ) {
+                if (it->first + it->second->first > cache_file_info->file_size) {
+                    cache_file_info->file_size = it->first + it->second->first;
+                }
+            }
+        }
         //printf("ssg_rank = %d, File %s, Retrieving registered cache block size of %llu\n", cache_info.ssg_rank, file.c_str(), (long long unsigned)cache_file_info->cache_block_reserved);
     }
 }
@@ -528,12 +540,14 @@ static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint6
     for ( i = subblock_index; i < cache_blocks; ++i ) {
         cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
         /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+
         if (cache_file_info.io_type == BENVOLIO_CACHE_READ && cache_offset + 1 > cache_file_info.file_size) {
-            //printf("cache offset %llu is beyond file size\n", (long long unsigned) cache_offset, (long long unsigned) cache_file_info.file_size);
+            //printf("ssg_rank %d, cache offset %llu is beyond file size %llu\n", cache_file_info.ssg_rank, (long long unsigned )cache_offset, (long long unsigned) cache_file_info.file_size);
             break;
         }
 
         if ( cache_file_info.cache_table->find(cache_offset) == cache_file_info.cache_table->end() ) {
+            //printf("ssg_rank %d, touching the cache offset %llu, file start = %llu, file size = %llu\n", cache_file_info.ssg_rank, (long long unsigned) cache_offset, (long long unsigned) file_start, (long long unsigned) file_size);
             if (cache_file_info.cache_offset_list->size() == cache_file_info.cache_block_reserved) {
                 cache_flush(cache_file_info);
             }
@@ -565,6 +579,7 @@ static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint6
                 //printf("setting cache size to be %llu, cache2 = %d\n", (long long unsigned) actual, cache_size2);
             }
         } else if (cache_file_info.io_type == BENVOLIO_CACHE_WRITE) {
+            //printf("ssg_rank %d, can we even reach here???????????????????????, cache offset = %llu, file start %llu, file size %llu,io_type = %d\n", cache_file_info.ssg_rank, (long long unsigned) cache_offset, (long long unsigned) file_start, (long long unsigned) file_size, cache_file_info.io_type);
             // We may need to enlarge the cache array size in the last block of this stripe when a new write operation comes in because the new offset can exceed the cache domain.
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
             if (file_start + file_size >= cache_offset + cache_size2) {
@@ -605,8 +620,9 @@ static size_t cache_match(char* local_buf, Cache_file_info cache_file_info, off_
     for ( i = subblock_index; i < cache_blocks; ++i) {
         cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
         /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+
         if (cache_file_info.io_type == BENVOLIO_CACHE_READ && cache_offset + 1 > cache_file_info.file_size) {
-            //printf("cache offset %llu is beyond file size\n", (long long unsigned) cache_offset, (long long unsigned) cache_file_info.file_size);
+            //printf("ssg_rank = %d, cache offset %llu is beyond file size %llu\n", cache_file_info.ssg_rank, (long long unsigned )cache_offset, (long long unsigned) cache_file_info.file_size);
             break;
         }
 
@@ -652,10 +668,6 @@ static size_t cache_match(char* local_buf, Cache_file_info cache_file_info, off_
 
 static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info, off_t file_start, uint64_t file_size) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info.cache_mutex));
-    cache_fetch(cache_file_info, file_start, file_size, cache_file_info.stripe_size, cache_file_info.stripe_count);
-    return cache_match(local_buf, cache_file_info, file_start, file_size, cache_file_info.stripe_size, cache_file_info.stripe_count);
-
-
     uint64_t actual_bytes, my_provider;
     off_t cache_offset, block_index, subblock_index;
     off_t cache_start;
@@ -687,7 +699,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
         cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
         /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
         if (cache_file_info.io_type == BENVOLIO_CACHE_READ && cache_offset + 1 > cache_file_info.file_size) {
-            //printf("cache offset %llu is beyond file size\n", (long long unsigned) cache_offset, (long long unsigned) cache_file_info.file_size);
+            //printf("ssg_rank = %d, cache offset %llu is beyond file size %llu\n", cache_file_info.ssg_rank, (long long unsigned )cache_offset, (long long unsigned) cache_file_info.file_size);
             break;
         }
 
@@ -706,15 +718,12 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info.cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
-/*
             if (cache_file_info.io_type == BENVOLIO_CACHE_READ || ( (i > subblock_index || cache_offset == file_start) && file_start + file_size - cache_offset >= cache_size2) ) {
                 actual = abt_io_pread(cache_file_info.abt_id, cache_file_info.fd, cache_file_info.cache_table[0][cache_offset]->second, cache_size2, cache_offset);
             } else {
                 //printf("triggered write direct at %llu\n", (long long unsigned)cache_offset);
                 actual = 0;
             }
-*/
-            actual = abt_io_pread(cache_file_info.abt_id, cache_file_info.fd, cache_file_info.cache_table[0][cache_offset]->second, cache_size2, cache_offset);
 
             // There is one exception, what if the file does not exist and a write operation is creating it? We should give the cache enough region to cover the write operation despite the fact that the read operation responded insufficient bytes.
             if (cache_file_info.io_type == BENVOLIO_CACHE_WRITE) {
@@ -1359,6 +1368,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.abt_id = abt_id;
         cache_file_info.stripe_size = stripe_size;
         cache_file_info.stripe_count = stripe_count;
+        cache_file_info.ssg_rank = ssg_rank;
 
         /*This is a very basic estimation of file size at local providers. Most likely we are making overestimation*/
 /*
@@ -1452,6 +1462,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.abt_id = abt_id;
         cache_file_info.stripe_size = stripe_size;
         cache_file_info.stripe_count = stripe_count;
+        cache_file_info.ssg_rank = ssg_rank;
+
         struct stat st;
         if (stat(file.c_str(), &st) == 0) {
             cache_file_info.file_size = st.st_size;
@@ -1555,7 +1567,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         int fd = getfd(file, O_RDWR);
 
         Cache_file_info cache_file_info;
-        cache_file_info.io_type = BENVOLIO_CACHE_READ;
+        cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
         cache_file_info.fd = fd;
         cache_file_info.abt_id = abt_id;
         cache_register(cache_info, file ,&cache_file_info);

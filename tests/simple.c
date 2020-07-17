@@ -42,7 +42,6 @@ int main(int argc, char **argv)
     bv_stat(client, filename, &stats);
     printf("got blocksize %ld stripe_count: %d stripe_size: %d from provider\n",
             stats.blocksize, stats.stripe_count, stats.stripe_size);
-
     write_address = msg;
     write_size = strlen(msg) + 1;
     off_t offset= 0;
@@ -55,7 +54,7 @@ int main(int argc, char **argv)
     }
 
     printf("flushing\n");
-    bv_flush(client, filename);
+    bv_flush(client, filename);    
 
     read_address = cmp;
     read_size = 128;
@@ -106,6 +105,9 @@ int main(int argc, char **argv)
     }
     free(bigbuf);
     free(cmpbuf);
+
+    printf("flushing\n");
+    bv_flush(client, filename);
 
     filesize = bv_getsize(client, filename);
     if (filesize != 15000+20) {
