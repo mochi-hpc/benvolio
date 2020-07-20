@@ -865,7 +865,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
                 //printf("setting cache size to be %llu, cache2 = %d\n", (long long unsigned) actual, cache_size2);
             }
         } else if (cache_file_info.io_type == BENVOLIO_CACHE_WRITE) {
-
             t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info.init_timestamp[0]);
             if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
@@ -873,7 +872,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
                 cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*)calloc(1, sizeof(Cache_counter));
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             }
-
+            cache_file_info.cache_stat->cache_counter.cache_page_hit_count++;
 
             // We may need to enlarge the cache array size in the last block of this stripe when a new write operation comes in because the new offset can exceed the cache domain.
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
@@ -892,6 +891,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
                 cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             }
+            cache_file_info.cache_stat->cache_counter.cache_page_hit_count++;
         }
 
         // Start to fetch from disk.
