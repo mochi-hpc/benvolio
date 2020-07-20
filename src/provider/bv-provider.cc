@@ -1695,7 +1695,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.fd = fd;
         cache_file_info.abt_id = abt_id;
         cache_register_lock(cache_info, file ,&cache_file_info);
-        cache_write_back(cache_file_info);
+        cache_write_back_lock(cache_file_info);
         cache_deregister_lock(cache_info, file);
         cache_remove_file_flush(cache_info, file);
         //printf("provider %d finished flushing\n",ssg_rank);
