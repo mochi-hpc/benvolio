@@ -30,10 +30,10 @@
 #include "lustre-utils.h"
 
 
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 16384
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 1024
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 8192
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 3
 #define BENVOLIO_CACHE_MAX_FILE 5
-#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16384
+#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 332
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
@@ -940,7 +940,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
         cache_file_info.cache_stat->memcpy_time += ABT_get_wtime() - time;
 
     }
-    cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+    cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - total_time;
     return file_size - remaining_file_size;
 /*
     cache_fetch(cache_file_info, file_start, file_size, cache_file_info.stripe_size, cache_file_info.stripe_count);
