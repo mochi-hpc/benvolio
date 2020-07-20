@@ -193,10 +193,10 @@ static void cache_summary(Cache_info cache_info, int ssg_rank) {
         cache_add_stat(cache_stat, it2->second);
     }
 
-    printf("Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_stat->cache_total_time);
+    printf("Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_stat->cache_total_time);
     sprintf(filename, "provider_timing_log_%d.csv", ssg_rank);
     stream = fopen(filename,"w");
-    fprintf(stream,"Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_stat->cache_total_time);
+    fprintf(stream, "Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_stat->cache_total_time);
     fclose(stream);
 
     //cache_counter per timestamp is summed up here
@@ -206,7 +206,7 @@ static void cache_summary(Cache_info cache_info, int ssg_rank) {
     for (it3 = cache_info.cache_counter_table->begin(); it3 != cache_info.cache_counter_table->end(); ++it3) {
         for ( it4 = it3->second->begin(); it4 != it3->second->end(); ++it4 ) {
             if ( cache_info.cache_counter_sum->find(it4->first) == cache_info.cache_counter_sum->end() ) {
-                cache_info.cache_counter_sum[0][it4->first] = (Cache_counter*) calloc(1,sizeof(Cache_counter));
+                cache_info.cache_counter_sum[0][it4->first] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
             }
             cache_add_counter(cache_info.cache_counter_sum[0][it4->first], it4->second);
         }
@@ -266,8 +266,7 @@ static void cache_remove_file(Cache_info cache_info, std::string file) {
     if (cache_info.cache_counter_table[0][file]->find(t_index) != cache_info.cache_counter_table[0][file]->end() ) {
         cache_info.cache_counter_table[0][file][0][t_index]->cache_erased++;
     } else {
-        cache_info.cache_counter_table[0][file][0][t_index] = new Cache_counter;
-        memset(cache_info.cache_counter_table[0][file][0][t_index], 0, sizeof(Cache_counter));
+        cache_info.cache_counter_table[0][file][0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
         cache_info.cache_counter_table[0][file][0][t_index]->cache_erased++;
     }
     
@@ -333,8 +332,7 @@ static void cache_write_back(Cache_file_info cache_file_info) {
     if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
         cache_file_info.cache_counter_table[0][t_index]->write_back_count++;
     } else {
-        cache_file_info.cache_counter_table[0][t_index] = new Cache_counter;
-        memset(cache_file_info.cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+        cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
         cache_file_info.cache_counter_table[0][t_index]->write_back_count++;
     }
 
@@ -465,8 +463,7 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
         if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
             cache_file_info->cache_counter_table[0][t_index]->files_register_count++;
         } else {
-            cache_file_info->cache_counter_table[0][t_index] = new Cache_counter;
-            memset(cache_file_info->cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+            cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
             cache_file_info->cache_counter_table[0][t_index]->files_register_count++;
         }
     } else {
@@ -486,8 +483,7 @@ static void cache_register(Cache_info cache_info, std::string file, Cache_file_i
         if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
             cache_file_info->cache_counter_table[0][t_index]->files_reuse_register_count++;
         } else {
-            cache_file_info->cache_counter_table[0][t_index] = new Cache_counter;
-            memset(cache_file_info->cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+            cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
             cache_file_info->cache_counter_table[0][t_index]->files_reuse_register_count++;
         }
 
@@ -560,7 +556,7 @@ static void cache_finalize(Cache_info cache_info) {
     for (it6 = cache_info.cache_counter_table->begin(); it6 != cache_info.cache_counter_table->end(); ++it6) {
         std::map<int, Cache_counter*>::iterator it7;
         for ( it7 = it6->second->begin(); it7 != it6->second->end(); ++it7 ) {
-            delete it7->second;
+            free(it7->second);
         }
 
         delete it6->second;
@@ -608,8 +604,7 @@ static void cache_flush(Cache_file_info cache_file_info) {
     if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
         cache_file_info.cache_counter_table[0][t_index]->cache_block_flush_count++;
     } else {
-        cache_file_info.cache_counter_table[0][t_index] = new Cache_counter;
-        memset(cache_file_info.cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+        cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
         cache_file_info.cache_counter_table[0][t_index]->cache_block_flush_count++;
     }
 
@@ -826,8 +821,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
             if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_fetch_count++;
             } else {
-                cache_file_info.cache_counter_table[0][t_index] = new Cache_counter;
-                memset(cache_file_info.cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+                cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_fetch_count++;
             }
 
@@ -876,8 +870,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
             if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             } else {
-                cache_file_info.cache_counter_table[0][t_index] = new Cache_counter;
-                memset(cache_file_info.cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+                cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*)calloc(1, sizeof(Cache_counter));
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             }
 
@@ -896,8 +889,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
             if (cache_file_info.cache_counter_table->find(t_index) != cache_file_info.cache_counter_table->end() ) {
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             } else {
-                cache_file_info.cache_counter_table[0][t_index] = new Cache_counter;
-                memset(cache_file_info.cache_counter_table[0][t_index], 0, sizeof(Cache_counter));
+                cache_file_info.cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
                 cache_file_info.cache_counter_table[0][t_index]->cache_page_hit_count++;
             }
         }
@@ -935,10 +927,10 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info cache_file_info
                 memcpy(local_buf, cache_file_info.cache_table[0][cache_offset]->second + cache_start, remaining_file_size);
             }
             remaining_file_size = 0;
+            cache_file_info.cache_stat->memcpy_time += ABT_get_wtime() - time;
             break;
         }
         cache_file_info.cache_stat->memcpy_time += ABT_get_wtime() - time;
-
     }
     cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - total_time;
     return file_size - remaining_file_size;
