@@ -33,7 +33,7 @@ int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *strip
     int ret = 0;
     int status = 0;
     /* guess some reasonable defaults for non-lustre systems */
-    *stripe_size = 1024;
+    *stripe_size = 16777216;
     *stripe_count = 156;
 
 #ifdef HAVE_LIBLUSTREAPI
