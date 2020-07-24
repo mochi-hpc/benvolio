@@ -716,13 +716,12 @@ static void cache_flush(Cache_file_info *cache_file_info) {
 
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
-    uint64_t actual_bytes, my_provider;
+    uint64_t my_provider;
     off_t cache_offset, block_index, subblock_index;
     off_t cache_start;
     size_t actual, i, cache_size, cache_size2, cache_blocks;
     uint64_t remaining_file_size = file_size;
     int stripe_count, stripe_size;
-    int direct_write;
     int t_index;
     #if BENVOLIO_CACHE_STATISTICS == 1
     double time;
@@ -869,35 +868,35 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         if ( remaining_file_size > cache_file_info->cache_table[0][cache_offset]->first - cache_start ) {
             //printf("ssg_rank %d cache match regular block %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
             /* We are not at the last block yet */
-            actual_bytes = cache_file_info->cache_table[0][cache_offset]->first - cache_start;
-            //printf("actual_bytes = %llu, cache_start = %llu, cache_size = %llu\n", (long long unsigned) actual_bytes, (long long unsigned) cache_start, (long long unsigned) cache_file_info->cache_table[0][cache_offset]->first);
+            actual = cache_file_info->cache_table[0][cache_offset]->first - cache_start;
+            //printf("actual = %llu, cache_start = %llu, cache_size = %llu\n", (long long unsigned) actual, (long long unsigned) cache_start, (long long unsigned) cache_file_info->cache_table[0][cache_offset]->first);
             if ( cache_file_info->io_type == BENVOLIO_CACHE_WRITE ) {
                 //Copy from cache buffer to user buffer.
-                memcpy(cache_file_info->cache_table[0][cache_offset]->second + cache_start, local_buf, actual_bytes);
+                memcpy(cache_file_info->cache_table[0][cache_offset]->second + cache_start, local_buf, actual);
                 //Need to mark this cache block has been updated.
                 cache_file_info->cache_update_list->insert(cache_offset);
                 #if BENVOLIO_CACHE_STATISTICS == 1
                 t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
                 if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
                     if (cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->find(cache_offset) != cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->end()) {
-                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] += actual_bytes;
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] += actual;
                     } else {
-                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual_bytes;
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
                     }
                 } else {
                     cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
                     cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
-                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual_bytes;
+                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
                 }
                 #endif
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ){
-                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual_bytes, (long long unsigned) cache_start);
-                memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual_bytes);
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual, (long long unsigned) cache_start);
+                memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual);
             }
 
-            remaining_file_size -= actual_bytes;
+            remaining_file_size -= actual;
             cache_start = 0;
-            local_buf += actual_bytes;
+            local_buf += actual;
         } else {
             //In some scenarios, the cache_start can beyond the cache page (bounded by the real file size), which leads to undefined behavior for read. For write, this should never happen because we should have reserved enough page size for this request.
 
@@ -930,9 +929,9 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 remaining_file_size = 0;
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_start < cache_file_info->cache_table[0][cache_offset]->first){
                 //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
-                actual_bytes = MIN(cache_file_info->cache_table[0][cache_offset]->first - cache_start, remaining_file_size);
-                memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual_bytes);
-                remaining_file_size -= actual_bytes;
+                actual = MIN(cache_file_info->cache_table[0][cache_offset]->first - cache_start, remaining_file_size);
+                memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual);
+                remaining_file_size -= actual;
             }
             #if BENVOLIO_CACHE_STATISTICS == 1
             cache_file_info->cache_stat->memcpy_time += ABT_get_wtime() - time;
