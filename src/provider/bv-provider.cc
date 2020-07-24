@@ -349,7 +349,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     cache_add_stat(cache_info->cache_stat_sum, cache_info->cache_stat_table[0][file]);
     cache_page_usage_log(cache_info, file);
 
-    //printf("-------------------------removing cache for file %s\n", file.c_str());
+    //printf("ssg_rank %d -------------------------removing cache for file %s\n", cache_info->ssg_rank, file.c_str());
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
@@ -468,11 +468,6 @@ static void cache_flush_all(Cache_info *cache_info, int check_time) {
 
 static void cache_deregister(Cache_info *cache_info, std::string file) {
     cache_info->register_table[0][file] -= 1;
-
-    if (cache_info->register_table[0][file] == 0 && cache_info->cache_block_reserve_table[0][file] <= BENVOLIO_CAHCE_MIN_N_BLOCKS) {
-        cache_remove_file(cache_info, file);
-    }
-
 }
 
 static void cache_deregister_lock(Cache_info *cache_info, std::string file) {
@@ -747,8 +742,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         if (it == cache_file_info->cache_offset_list->end()) {
             // New page and insufficient budget, we proceed to remove least recent use page.
             if (cache_file_info->cache_offset_list->size() == cache_file_info->cache_block_reserved) {
-                if (cache_file_info->io_type == BENVOLIO_CACHE_READ)
-                printf("ssg_rank %d flush triggered!\n",cache_file_info->ssg_rank);
+                //printf("ssg_rank %d flush triggered!\n",cache_file_info->ssg_rank);
                 cache_flush(cache_file_info);
             }
         } else {
@@ -756,7 +750,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             cache_file_info->cache_offset_list->erase(it);
         }
         cache_file_info->cache_offset_list->push_back(cache_offset);
-
 
         if ( cache_file_info->cache_table->find(cache_offset) == cache_file_info->cache_table->end() ) {
             //printf("ssg_rank %d New cache_offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset );
@@ -783,16 +776,18 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
+
             if (cache_file_info->io_type == BENVOLIO_CACHE_READ || ( (i == subblock_index && cache_offset < file_start) || file_start + file_size < cache_offset + cache_size2 ) ) {
                 time = ABT_get_wtime();
                 actual = abt_io_pread(cache_file_info->abt_id, cache_file_info->fd, cache_file_info->cache_table[0][cache_offset]->second, cache_size2, cache_offset);
-                if (cache_file_info->io_type == BENVOLIO_CACHE_READ)
-                printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu reading contiguous %llu number of bytes\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual);
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu reading contiguous %llu number of bytes\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual);
                 cache_file_info->cache_stat->cache_fetch_time += ABT_get_wtime() - time;
             } else {
                 //printf("triggered write direct at %llu\n", (long long unsigned)cache_offset);
                 actual = 0;
             }
+
+            actual = abt_io_pread(cache_file_info->abt_id, cache_file_info->fd, cache_file_info->cache_table[0][cache_offset]->second, cache_size2, cache_offset);
 
             // There is one exception, what if the file does not exist and a write operation is creating it? We should give the cache enough region to cover the write operation despite the fact that the read operation responded insufficient bytes.
             if (cache_file_info->io_type == BENVOLIO_CACHE_WRITE) {
@@ -873,7 +868,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 }
 
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ){
-                printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual_bytes, (long long unsigned) cache_start);
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual_bytes, (long long unsigned) cache_start);
                 memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual_bytes);
             }
 
@@ -906,7 +901,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 }
                 remaining_file_size = 0;
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_start < cache_file_info->cache_table[0][cache_offset]->first){
-                printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
                 actual_bytes = MIN(cache_file_info->cache_table[0][cache_offset]->first - cache_start, remaining_file_size);
                 memcpy(local_buf, cache_file_info->cache_table[0][cache_offset]->second + cache_start, actual_bytes);
                 remaining_file_size -= actual_bytes;
