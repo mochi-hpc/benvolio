@@ -30,10 +30,10 @@
 #include "lustre-utils.h"
 
 
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 16
 #define BENVOLIO_CAHCE_MIN_N_BLOCKS 3
 #define BENVOLIO_CACHE_MAX_FILE 5
-#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
+#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 262144
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
@@ -173,7 +173,7 @@ static void cache_write_back_lock(Cache_file_info *cache_file_info);
 static void cache_flush(Cache_file_info *cache_file_info);
 //static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint64_t file_size, int stripe_size, int stripe_count);
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size);
-static void cache_remove_file_flush(Cache_info *cache_info, std::string file);
+static void cache_remove_file_lock(Cache_info *cache_info, std::string file);
 static int cache_exist(Cache_info *cache_info, std::string file);
 static void cache_flush_all(Cache_info *cache_info, int check_time);
 static void cache_page_usage_log(Cache_info *cache_info, std::string file);
@@ -208,6 +208,7 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
     Cache_stat *cache_stat = cache_info->cache_stat_sum;
     std::map<std::string, Cache_stat*>::iterator it2;
     for ( it2 = cache_info->cache_stat_table->begin(); it2 != cache_info->cache_stat_table->end(); ++it2 ) {
+        cache_page_usage_log(cache_info, it2->first);
         cache_add_stat(cache_stat, it2->second);
     }
 
@@ -277,11 +278,10 @@ static void cache_page_usage_log(Cache_info *cache_info, std::string file) {
     #if BENVOLIO_CACHE_STATISTICS == 1
     FILE* stream;
     int max_timestamp=-1, i, j;
-    char filename[1024];
+    char filename[2048];
     std::map<int, Cache_counter*> *cache_counter_table = cache_info->cache_counter_table[0][file];
     std::map<int, Cache_counter*>::iterator it;
     std::set<off_t> *cache_pages = new std::set<off_t>;
-
     for ( it = cache_counter_table->begin(); it != cache_counter_table->end(); ++it ) {
         if (it->first > max_timestamp || max_timestamp==-1) {
             max_timestamp = it->first;
@@ -291,35 +291,50 @@ static void cache_page_usage_log(Cache_info *cache_info, std::string file) {
             cache_pages->insert(it2->first);
         }
     }
-    sprintf(filename, "provider_page_usage_log_%d_%lld.csv", cache_info->ssg_rank, (long long int)ABT_get_wtime());
+    sprintf(filename, "%s_provider_page_usage_%d_%lld.csv", file.c_str(), cache_info->ssg_rank, (long long int)ABT_get_wtime());
+    //printf("---------------------------------------ssg_rank %d entered cache_page_usage_log %s, cache page size = %ld\n", cache_info->ssg_rank, filename, cache_pages->size());
     stream = fopen(filename,"w");
-    std::set<off_t>::iterator it3;
     fprintf(stream,"timestamp");
+    //printf("timestamp");
+    std::set<off_t>::iterator it3;
     for (it3 = cache_pages->begin(); it3 != cache_pages->end(); ++it3) {
-        fprintf(stream, ",%llu", (long long unsigned) (*it3));
+        //fprintf(stream,",1");
+        long long int temp = (long long int) *it3;
+        //printf(",%lld",temp);
+        fprintf(stream, ",%lld", temp);
+        //printf("ssg_rank = %d and %lld \n", cache_info->ssg_rank, temp);
     }
     fprintf(stream, "\n");
+    //printf("\n");
 
     for (i = 0; i <= max_timestamp; ++i) {
         fprintf(stream, "%d", i);
+        //printf("%d", i);
         if (cache_counter_table->find(i) == cache_counter_table->end()) {
             for ( j = 0; j < (int) cache_pages->size(); ++j ) {
                 fprintf(stream,",0");
+                //printf(",0");
             }
+            //printf("\n");
             fprintf(stream,"\n");
             continue;
         }
         std::set<off_t>::iterator it4;
         for (it4 = cache_pages->begin(); it4 != cache_pages->end(); ++it4) {
             if (cache_counter_table[0][i]->cache_page_usage->find(*it4) != cache_counter_table[0][i]->cache_page_usage->end()) {
-                fprintf(stream, ", %llu", (long long unsigned) cache_counter_table[0][i]->cache_page_usage[0][*it4]);
+                long long unsigned temp = (long long unsigned) cache_counter_table[0][i]->cache_page_usage[0][*it4];
+                fprintf(stream, ",%llu", temp );
+                //printf(",%llu", temp);
+                //fprintf(stream,",1");
             } else {
-                fprintf(stream,"\n");
+                fprintf(stream,",0");
+                //printf(",0");
             }
         }
+        //printf("\n");
         fprintf(stream,"\n");
     }
-
+    //printf("---------------------------------------------------\n");
     fclose(stream);
     delete cache_pages;
     #endif
@@ -330,35 +345,35 @@ static void cache_page_usage_log(Cache_info *cache_info, std::string file) {
 */
 static void cache_remove_file(Cache_info *cache_info, std::string file) {
     #if BENVOLIO_CACHE_STATISTICS == 1
-        cache_info->cache_stat_table[0][file]->cache_counter.cache_erased++;
+    cache_info->cache_stat_table[0][file]->cache_counter.cache_erased++;
 
-        int t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_info->init_timestamp[0]);
-        if (cache_info->cache_counter_table[0][file]->find(t_index) != cache_info->cache_counter_table[0][file]->end() ) {
-            cache_info->cache_counter_table[0][file][0][t_index]->cache_erased++;
-        } else {
-            cache_info->cache_counter_table[0][file][0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
-            cache_info->cache_counter_table[0][file][0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
-            cache_info->cache_counter_table[0][file][0][t_index]->cache_erased++;
-        }
+    int t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_info->init_timestamp[0]);
+    if (cache_info->cache_counter_table[0][file]->find(t_index) != cache_info->cache_counter_table[0][file]->end() ) {
+        cache_info->cache_counter_table[0][file][0][t_index]->cache_erased++;
+    } else {
+        cache_info->cache_counter_table[0][file][0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
+        cache_info->cache_counter_table[0][file][0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+        cache_info->cache_counter_table[0][file][0][t_index]->cache_erased++;
+    }
     
-        std::map<int, Cache_counter*>* cache_counter_map = cache_info->cache_counter_table[0][file];
-        std::map<int, Cache_counter*>::iterator it;
-        Cache_counter *temp;
-        for ( it = cache_counter_map->begin(); it != cache_counter_map->end(); ++it ) {
-            if (cache_info->cache_counter_sum->find(it->first) == cache_info->cache_counter_sum->end()) {
-                temp = (Cache_counter*) calloc(1, sizeof(Cache_counter));
-                cache_info->cache_counter_sum[0][it->first] = temp;
-            } else {
-                temp = cache_info->cache_counter_sum[0][it->first];
-            }
-            cache_add_counter(temp, it->second);
+    std::map<int, Cache_counter*>* cache_counter_map = cache_info->cache_counter_table[0][file];
+    std::map<int, Cache_counter*>::iterator it;
+    Cache_counter *temp;
+    for ( it = cache_counter_map->begin(); it != cache_counter_map->end(); ++it ) {
+        if (cache_info->cache_counter_sum->find(it->first) == cache_info->cache_counter_sum->end()) {
+            temp = (Cache_counter*) calloc(1, sizeof(Cache_counter));
+            cache_info->cache_counter_sum[0][it->first] = temp;
+        } else {
+            temp = cache_info->cache_counter_sum[0][it->first];
         }
-        cache_add_stat(cache_info->cache_stat_sum, cache_info->cache_stat_table[0][file]);
-        cache_page_usage_log(cache_info, file);
-        delete cache_info->cache_stat_table[0][file];
-        delete cache_info->cache_counter_table[0][file];
-        cache_info->cache_counter_table->erase(file);
-        cache_info->cache_stat_table->erase(file);
+        cache_add_counter(temp, it->second);
+    }
+    cache_add_stat(cache_info->cache_stat_sum, cache_info->cache_stat_table[0][file]);
+    cache_page_usage_log(cache_info, file);
+    delete cache_info->cache_stat_table[0][file];
+    delete cache_info->cache_counter_table[0][file];
+    cache_info->cache_counter_table->erase(file);
+    cache_info->cache_stat_table->erase(file);
     #endif
 
     //printf("ssg_rank %d -------------------------removing cache for file %s\n", cache_info->ssg_rank, file.c_str());
@@ -384,7 +399,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     cache_info->fd_table->erase(file);
 }
 
-static void cache_remove_file_flush(Cache_info *cache_info, std::string file) {
+static void cache_remove_file_lock(Cache_info *cache_info, std::string file) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
     if (cache_info->cache_table->find(file) != cache_info->cache_table->end() && cache_info->register_table[0][file] == 0) {
         cache_remove_file(cache_info, file);
@@ -469,6 +484,12 @@ static void cache_flush_all(Cache_info *cache_info, int check_time) {
     }
 }
 
+static void cache_flush_all_lock(Cache_info *cache_info, int check_time) {
+    std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
+    cache_flush_all(cache_info, check_time);
+}
+
+
 static void cache_deregister(Cache_info *cache_info, std::string file) {
     cache_info->register_table[0][file] -= 1;
 }
@@ -497,7 +518,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
         if (cache_info->cache_block_used[0] >= BENVOLIO_CACHE_MAX_N_BLOCKS) {
-            //printf("entered eager cache write-back mechanism!\n");
+            printf("ssg_rank %d entered eager cache write-back mechanism!\n", cache_info->ssg_rank);
             cache_flush_all(cache_info, 0);
         }
 
@@ -961,7 +982,7 @@ static int cache_shutdown_flag(Cache_info *cache_info) {
 
 static int cache_resource_manager(Cache_info *cache_info, abt_io_instance_id abt_id) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
-    cache_flush_all(cache_info, 1);
+    //cache_flush_all(cache_info, 1);
     return cache_info->shutdown[0];
 }
 
@@ -1682,7 +1703,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return (stats);
     }
     int del(const std::string &file) {
-        cache_remove_file_flush(cache_info, file);
+        cache_remove_file_lock(cache_info, file);
         int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
         return ret;
@@ -1702,7 +1723,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_register_lock(cache_info, file ,&cache_file_info);
         cache_write_back_lock(&cache_file_info);
         cache_deregister_lock(cache_info, file);
-        cache_remove_file_flush(cache_info, file);
+        cache_remove_file_lock(cache_info, file);
         //printf("provider %d finished flushing\n",ssg_rank);
         return (fsync(fd));
     }
@@ -1787,6 +1808,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_summary(cache_info, ssg_rank);
         #endif
+        cache_flush_all_lock(cache_info, 0);
         cache_finalize(cache_info);
         free(cache_info);
         margo_bulk_pool_destroy(mr_pool);
