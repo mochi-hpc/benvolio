@@ -30,8 +30,8 @@
 #include "lustre-utils.h"
 
 
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 3
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 4
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 1
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
 #define BENVOLIO_CACHE_WRITE 1
@@ -39,7 +39,7 @@
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 10
 #define BENVOLIO_CACHE_STATISTICS 1
-#define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/5))
+#define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
 
 
@@ -253,7 +253,7 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
 
     for (i = 0; i <= max_timestamp; ++i) {
         if (cache_counter_table->find(i) == cache_counter_table->end()) {
-            fprintf(stream,"0, 0, 0, 0, 0\n");
+            fprintf(stream,"0, 0, 0, 0, 0, 0, 0\n");
             continue;
         }
         fprintf(stream,"%d,", cache_counter_table[0][i]->files_register_count);
