@@ -39,7 +39,7 @@
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 10
 #define BENVOLIO_CACHE_STATISTICS 1
-#define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
+#define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/5))
 
 
 
