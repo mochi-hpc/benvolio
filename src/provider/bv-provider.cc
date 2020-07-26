@@ -30,10 +30,10 @@
 #include "lustre-utils.h"
 
 
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 4
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 1
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 16
 #define BENVOLIO_CACHE_MAX_FILE 5
-#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
+#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 10
@@ -170,7 +170,7 @@ static void cache_init(Cache_info *cache_info);
 static void cache_finalize(Cache_info *cache_info);
 static void cache_write_back(Cache_file_info *cache_file_info);
 static void cache_write_back_lock(Cache_file_info *cache_file_info);
-static void cache_flush(Cache_file_info *cache_file_info);
+//static void cache_flush(Cache_file_info *cache_file_info);
 //static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint64_t file_size, int stripe_size, int stripe_count);
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size);
 static void cache_remove_file_lock(Cache_info *cache_info, std::string file);
@@ -243,6 +243,7 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
 
     sprintf(filename, "provider_counter_log_%d.csv", ssg_rank);
     stream = fopen(filename,"w");
+    fprintf(stream,"timestamp,");
     fprintf(stream,"file_register_count,");
     fprintf(stream,"file_reuse_register_count,");
     fprintf(stream,"cache_page_fetch,");
@@ -252,8 +253,9 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
     fprintf(stream,"cache_file_erased\n");
 
     for (i = 0; i <= max_timestamp; ++i) {
+        fprintf(stream,"%d,", i);
         if (cache_counter_table->find(i) == cache_counter_table->end()) {
-            fprintf(stream,"0, 0, 0, 0, 0, 0, 0\n");
+            fprintf(stream,"0, 0, 0, 0, 0, 0, 0\n",i);
             continue;
         }
         fprintf(stream,"%d,", cache_counter_table[0][i]->files_register_count);
@@ -982,7 +984,7 @@ static int cache_shutdown_flag(Cache_info *cache_info) {
 
 static int cache_resource_manager(Cache_info *cache_info, abt_io_instance_id abt_id) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
-    //cache_flush_all(cache_info, 1);
+    cache_flush_all(cache_info, 1);
     return cache_info->shutdown[0];
 }
 
