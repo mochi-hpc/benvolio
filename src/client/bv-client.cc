@@ -346,6 +346,7 @@ int bv_statistics(bv_client_t client, int show_server)
     }
     std::cout << "CLIENT: ";
     client->statistics.print_client();
+    margo_diag_dump(client->engine->get_margo_instance(), "-", 0);
     return ret;
 }
 
