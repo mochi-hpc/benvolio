@@ -231,8 +231,9 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     /* How expensive is this? do we need to move this out of the I/O path?
      * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
+    time = ABT_get_wtime();
     compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
-
+    client->statistics.client_write_calc_striping_time += ABT_get_wtime() - time;
     /* two steps:
      * - first split up the memory and file descriptions into per-target
      *   "bins".  Logic here will get fiddly: we might have to split up a memory

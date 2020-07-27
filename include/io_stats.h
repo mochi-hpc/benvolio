@@ -17,6 +17,7 @@ class io_stats {
 	    client_read_calls(0), client_read_time(0.0),
 	    client_bytes_read(0),
 	    client_init_time(0.0),
+            client_write_calc_striping_time(0.0),
             client_write_calc_request_time(0.0),
             client_write_post_request_time1(0.0),
             client_write_post_request_time2(0.0),
@@ -88,6 +89,7 @@ class io_stats {
     double client_read_time;  // time client spent in "bv_read
     int64_t client_bytes_read; // bytes recieved from provider
     double client_init_time; // how long does it take to set everything up
+    double client_write_calc_striping_time;
     double client_write_calc_request_time;
     double client_write_post_request_time1;
     double client_write_post_request_time2;
@@ -124,6 +126,7 @@ class io_stats {
 	client_read_calls += rhs.client_read_calls;
 	client_read_time += rhs.client_read_time;
 	client_init_time += rhs.client_init_time;
+	client_write_calc_striping_time += rhs.client_write_calc_striping_time;
 	client_write_calc_request_time += rhs.client_write_calc_request_time;
 	client_write_post_request_time1 += rhs.client_write_post_request_time1;
 	client_write_post_request_time2 += rhs.client_write_post_request_time2;
@@ -162,6 +165,7 @@ class io_stats {
             << " client_read_time " << client_read_time
 	    << " client_bytes_read " << client_bytes_read
             << " client_init_time " << client_init_time
+            << " client_write_calc_striping_time " << client_write_calc_striping_time
             << " client_write_calc_request_time " << client_write_calc_request_time
             << " client_write_post_request_time1 " << client_write_post_request_time1
             << " client_write_post_request_time2 " << client_write_post_request_time2
