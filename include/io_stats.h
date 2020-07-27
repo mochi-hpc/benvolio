@@ -18,7 +18,8 @@ class io_stats {
 	    client_bytes_read(0),
 	    client_init_time(0.0),
             client_write_calc_request_time(0.0),
-            client_write_post_request_time(0.0),
+            client_write_post_request_time1(0.0),
+            client_write_post_request_time2(0.0),
             client_write_wait_request_time(0.0)
             
     {};
@@ -88,7 +89,8 @@ class io_stats {
     int64_t client_bytes_read; // bytes recieved from provider
     double client_init_time; // how long does it take to set everything up
     double client_write_calc_request_time;
-    double client_write_post_request_time;
+    double client_write_post_request_time1;
+    double client_write_post_request_time2;
     double client_write_wait_request_time;
 
 
@@ -123,7 +125,8 @@ class io_stats {
 	client_read_time += rhs.client_read_time;
 	client_init_time += rhs.client_init_time;
 	client_write_calc_request_time += rhs.client_write_calc_request_time;
-	client_write_post_request_time += rhs.client_write_post_request_time;
+	client_write_post_request_time1 += rhs.client_write_post_request_time1;
+	client_write_post_request_time2 += rhs.client_write_post_request_time2;
 	client_write_wait_request_time += rhs.client_write_wait_request_time;
 
 	return *this;
@@ -160,7 +163,8 @@ class io_stats {
 	    << " client_bytes_read " << client_bytes_read
             << " client_init_time " << client_init_time
             << " client_write_calc_request_time " << client_write_calc_request_time
-            << " client_write_post_request_time " << client_write_post_request_time
+            << " client_write_post_request_time1 " << client_write_post_request_time1
+            << " client_write_post_request_time2 " << client_write_post_request_time2
             << " client_write_wait_request_time " << client_write_wait_request_time
             << std::endl;
     }

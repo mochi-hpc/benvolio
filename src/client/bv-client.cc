@@ -257,14 +257,16 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     /* i: index into container of remote targets
      * j: index into container of bulk regions -- different because we skip
      * over targets without any work to do for this request  */
-    time = ABT_get_wtime();
     for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
         //printf("requests data for %s is moving to provider %d\n", filename, i);
+        time = ABT_get_wtime();
         my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
+        client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
+        time = ABT_get_wtime();
         responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
+        client->statistics.client_write_post_request_time2 += ABT_get_wtime() - time;
     }
-    client->statistics.client_write_post_request_time += ABT_get_wtime() - time;
 
     time = ABT_get_wtime();
     for (auto &r : responses) {
