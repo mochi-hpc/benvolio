@@ -227,7 +227,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
 {
     std::vector<io_access> my_reqs(client->targets.size());
     size_t bytes_moved = 0;
-
+    double time;
     /* How expensive is this? do we need to move this out of the I/O path?
      * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
@@ -239,9 +239,10 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
      *   or file block across multiple targets.
      * - second, for each target construct a bulk description for memory and
      *   send the file offset/length pairs in its bin. */
+    time = ABT_get_wtime();
     calc_requests(mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
-
+    client->statistics.client_write_calc_request_time = ABT_get_wtime() - time;
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
@@ -256,18 +257,22 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     /* i: index into container of remote targets
      * j: index into container of bulk regions -- different because we skip
      * over targets without any work to do for this request  */
+    time = ABT_get_wtime();
     for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
         //printf("requests data for %s is moving to provider %d\n", filename, i);
         my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
         responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
     }
+    client->statistics.client_write_post_request_time = ABT_get_wtime() - time;
 
+    time = ABT_get_wtime();
     for (auto &r : responses) {
         ssize_t ret = r.wait();
         if (ret >= 0)
             bytes_moved += ret;
     }
+    client->statistics.client_write_wait_request_time = ABT_get_wtime() - time;
     return bytes_moved;
 }
 
