@@ -242,7 +242,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     time = ABT_get_wtime();
     calc_requests(mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
-    client->statistics.client_write_calc_request_time = ABT_get_wtime() - time;
+    client->statistics.client_write_calc_request_time += ABT_get_wtime() - time;
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
@@ -264,7 +264,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
         responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
     }
-    client->statistics.client_write_post_request_time = ABT_get_wtime() - time;
+    client->statistics.client_write_post_request_time += ABT_get_wtime() - time;
 
     time = ABT_get_wtime();
     for (auto &r : responses) {
@@ -272,7 +272,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         if (ret >= 0)
             bytes_moved += ret;
     }
-    client->statistics.client_write_wait_request_time = ABT_get_wtime() - time;
+    client->statistics.client_write_wait_request_time += ABT_get_wtime() - time;
     return bytes_moved;
 }
 
