@@ -14,6 +14,7 @@ class io_stats {
 	    mutex_time(0.0),
             client_write_calls(0), client_write_time(0.0),
 	    client_bytes_written(0),
+            client_write_expose(0.0), client_read_expose(0.0),
 	    client_read_calls(0), client_read_time(0.0),
 	    client_bytes_read(0),
 	    client_init_time(0.0)
@@ -83,6 +84,8 @@ class io_stats {
     double client_read_time;  // time client spent in "bv_read
     int64_t client_bytes_read; // bytes recieved from provider
     double client_init_time; // how long does it take to set everything up
+    double client_write_expose; // time spent registering memory before writing
+    double client_read_expose;  // time spent registering memory before reading
 
 
     io_stats  & operator += (const io_stats &rhs) {
@@ -145,9 +148,11 @@ class io_stats {
         std::cout << "client_write_calls " << client_write_calls
             << " client_write_time " << client_write_time
 	    << " client_bytes_written " << client_bytes_written
+            << " client_write_expose_time " << client_write_expose
             << " client_read_calls " << client_read_calls
             << " client_read_time " << client_read_time
 	    << " client_bytes_read " << client_bytes_read
+            << " client_read_expose_time " << client_read_expose
             << " client_init_time " << client_init_time
             << std::endl;
     }
