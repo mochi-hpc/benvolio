@@ -29,8 +29,8 @@
 
 #include "lustre-utils.h"
 
-
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
+#define BENVOLIO_CACHE_ENABLE 1
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 16
 #define BENVOLIO_CAHCE_MIN_N_BLOCKS 16
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
@@ -45,6 +45,7 @@
 
 namespace tl = thallium;
 
+#if BENVOLIO_CACHE_ENABLE == 1
 typedef struct {
     std::map<off_t, uint64_t>* cache_page_usage;
     int cache_page_hit_count;
@@ -68,43 +69,6 @@ typedef struct {
 /**
  * Toolkits for describing provider's cache information.
  * Maps are all from files to cache related data structures inside Cache_file_info (more details below).
-
-TODO:
-flow control (client and server)
-flushing mechanisms
-Done: E3SM as a simple case.
-Decoupling write and I/O operation.
-Active buffering with threads.
-Done: Caching block per file (should enlarge)
--------------------------------------
- Chunk statistics into time intervals.
- Collect time series for statistics.
- How close to the maximum cache capacity.
- Lock structured approach.
- Hold on the writes as update. 
- Pass back RPCs first.
- Page is going to be filled? Put the data into buffer.
- Eviction cache policy is the most important part.
- Dynamic cache eviction. When above threshold, we trigger read-modify-write.
- Single write to the entire page, we can directly write.
-
- Hodling more information about the cache page?
- Data structure for the cache page?
- Memory space usage with some software engineering work.
-
- All-direct: without using kernel cache. How lustre behaves?
- Easy test compared with E3SM test.
- Get RPC that obviously copy the entire cache, so no need to do read operation.
-
---------------------------------------
-Maybe memory registration is causing the performance difference of client and provider?
-Once a block is filled entirely, we can immediately write back.
-Let us know how full a cache page is filled at a perticular timestamp.
-Flush pages, only for fully populated page.
-1. How many bytes?
-2. Bitmap touch the subregion, more data coming, keep a list of extent.
-3. Track the number of bytes into each cache page. It can tell us the workload, when it is going to be full.
-
 */
 typedef struct {
     abt_io_instance_id abt_id;
@@ -1010,6 +974,8 @@ static void cache_resource_manager(void *_args) {
     return;
 }
 
+#endif
+
 
 struct file_info {
     int fd;
@@ -1037,7 +1003,7 @@ struct io_args {
     int ret;
     /* statistics collection */
     io_stats stats;
-
+    #if BENVOLIO_CACHE_ENABLE == 1
     Cache_file_info *cache_file_info;
 
     io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
@@ -1054,6 +1020,20 @@ struct io_args {
         file_starts(start_vec),
         file_sizes(size_vec),
         cache_file_info(cache_file_i) {};
+    #else
+    io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
+            const std::vector<off_t> & start_vec,
+            const std::vector<uint64_t> & size_vec) :
+        engine(eng),
+        ep(e),
+        abt_id(id),
+        fd(f),
+        client_bulk(b),
+        mr_pool(p),
+        xfersize(x),
+        file_starts(start_vec),
+        file_sizes(size_vec){};
+    #endif
 
 };
 
@@ -1209,22 +1189,22 @@ static void write_ult(void *_args)
         // - what if the client has a really long file descripton but for some reason only a small amount of memory?
         // - what if the client has a really large amount of memory but a short file description?
         // -- write returns the smaller of the two
-/*
+        #if BENVOLIO_CACHE_ENABLE == 0
         std::list<abt_io_op_t *> ops;
         std::list<ssize_t> rets;
-*/
+        #endif
         io_time = ABT_get_wtime();
         while (file_idx < args->file_starts.size() && issued < local_bufsize) {
             // we might be able to only write a partial block
             //rets.push_back(-1);
             nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
 
-            
+            #if BENVOLIO_CACHE_ENABLE == 1
             file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
-/*
+            #else
             abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
             ops.push_back(write_op);
-*/
+            #endif
             issued += nbytes;
             
             write_count++;
@@ -1243,7 +1223,7 @@ static void write_ult(void *_args)
 
             xfered += nbytes;
         }
-/*
+        #if BENVOLIO_CACHE_ENABLE == 0
         for (auto x : ops) {
             abt_io_op_wait(x);
             abt_io_op_free(x);
@@ -1255,7 +1235,7 @@ static void write_ult(void *_args)
             file_xfer += x;
         ops.clear();
         rets.clear();
-*/
+        #endif
         //fprintf(stderr, "   SERVER: ABT-IO POOL: %ld items\n", abt_io_get_pool_size(args->abt_id));
 
         client_cursor += client_xfer;
@@ -1271,7 +1251,6 @@ static void write_ult(void *_args)
     }
 
     /*Write-back the cache blocks.*/
-    //cache_write_back_lock(args->cache_file_info);
 
     ABT_mutex_lock(args->mutex);
     args->ults_active--;
@@ -1358,10 +1337,12 @@ static void read_ult(void *_args)
             nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, local_bufsize-buf_cursor);
 
             io_time = ABT_get_wtime();
-
+            #if BENVOLIO_CACHE_ENABLE == 1
             temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
             file_xfer += temp;
-            //file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor);
+            #else
+            file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor);
+            #endif
             io_time = ABT_get_wtime()-io_time;
             total_io_time += io_time;
             read_count++;
@@ -1448,11 +1429,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     tl::mutex    stats_mutex;
     tl::mutex    size_mutex;
     tl::mutex    fd_mutex;
-
+    #if BENVOLIO_CACHE_ENABLE == 1
     Cache_info *cache_info;
     struct resource_manager_args rm_args;
     int ssg_size, ssg_rank;
-
+    #endif
     /* handles to RPC objects so we can clean them up in destructor */
     std::vector<tl::remote_procedure> rpcs;
 
@@ -1513,6 +1494,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         if (fd < 0) return fd;
 
         /* Process cache */
+        #if BENVOLIO_CACHE_ENABLE == 1
         Cache_file_info cache_file_info;
         
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
@@ -1536,10 +1518,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         }
         cache_file_info.file_size = max_off - min_off;
 */
-
         cache_register_lock(cache_info, file ,&cache_file_info);
-
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info);
+        #else
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
+        #endif
         ABT_mutex_create(&args.mutex);
         ABT_eventual_create(0, &args.eventual);
 
@@ -1555,9 +1538,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         ABT_eventual_wait(args.eventual, NULL);
 
         ABT_eventual_free(&args.eventual);
-
+        #if BENVOLIO_CACHE_ENABLE == 1
         cache_deregister_lock(cache_info, file);
-
+        #endif
         local_stats.write_response = ABT_get_wtime();
         req.respond(args.client_cursor);
         local_stats.write_response = ABT_get_wtime() - local_stats.write_response;
@@ -1608,6 +1591,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         if (fd < 0) return fd;
 
         /* Process cache */
+        #if BENVOLIO_CACHE_ENABLE == 1
         Cache_file_info cache_file_info;
         cache_file_info.io_type = BENVOLIO_CACHE_READ;
         cache_file_info.fd = fd;
@@ -1645,6 +1629,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         }
         //printf("reading a file with size %llu\n", (long long unsigned) cache_file_info.file_size);
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info);
+        #else
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
+        #endif
         ABT_mutex_create(&args.mutex);
         ABT_eventual_create(0, &args.eventual);
 
@@ -1656,9 +1643,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         }
         ABT_eventual_wait(args.eventual, NULL);
         ABT_eventual_free(&args.eventual);
-
+        #if BENVOLIO_CACHE_ENABLE == 1
         cache_deregister_lock(cache_info, file);
-
+        #endif
         local_stats.read_response = ABT_get_wtime();
         req.respond(args.client_cursor);
         local_stats.read_response = ABT_get_wtime() - local_stats.read_response;
@@ -1705,19 +1692,20 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return (stats);
     }
     int del(const std::string &file) {
+        #if BENVOLIO_CACHE_ENABLE == 1
         cache_remove_file_lock(cache_info, file);
+        #endif
         int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
         return ret;
     }
     int flush(const std::string &file) {
-        if (!cache_exist(cache_info, file)) {
-            return 0;
-        }
-
 	/* omiting O_CREAT: what would it mean to flush a nonexistent file ? */
         int fd = getfd(file, O_RDWR);
-
+        #if BENVOLIO_CACHE_ENABLE == 1
+        if (!cache_exist(cache_info, file)) {
+            return (fsync(fd));
+        }
         Cache_file_info cache_file_info;
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
         cache_file_info.fd = fd;
@@ -1726,6 +1714,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_write_back_lock(&cache_file_info);
         cache_deregister_lock(cache_info, file);
         cache_remove_file_lock(cache_info, file);
+        #endif
         //printf("provider %d finished flushing\n",ssg_rank);
         return (fsync(fd));
     }
@@ -1774,20 +1763,20 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rpcs.push_back(define("statistics", &bv_svc_provider::statistics));
             rpcs.push_back(define("size", &bv_svc_provider::getsize));
             rpcs.push_back(define("declare", &bv_svc_provider::declare));
-
+            #if BENVOLIO_CACHE_ENABLE == 1
             ssg_size = ssg_get_group_size(gid);
             ssg_rank = ssg_get_group_self_rank(gid);
             cache_info = (Cache_info*) malloc(sizeof(Cache_info));
             cache_init(cache_info);
             cache_info->ssg_rank = ssg_rank;
             cache_info->abt_id = abt_id;
-
             rm_args.cache_info = cache_info;
             rm_args.abt_id = abt_id;
             rm_args.ssg_rank = ssg_rank;
+
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
-
+            #endif
         }
     void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
     {
@@ -1802,6 +1791,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ~bv_svc_provider() {
+        #if BENVOLIO_CACHE_ENABLE == 1
         printf("provider %d entered destroy function\n", ssg_rank);
         cache_shutdown_flag(cache_info);
         ABT_eventual_wait(rm_args.eventual, NULL);
@@ -1813,6 +1803,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_flush_all_lock(cache_info, 0);
         cache_finalize(cache_info);
         free(cache_info);
+        #endif
         margo_bulk_pool_destroy(mr_pool);
     }
 };
