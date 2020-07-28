@@ -437,7 +437,7 @@ static void cache_flush_all(Cache_info *cache_info, int check_time) {
     }
     std::vector<std::string>::iterator it2;
     for ( it2 = filenames.begin(); it2 != filenames.end(); ++it2) {
-        if (cache_info->register_table[0][*it2] == 0 && (check_time || (ABT_get_wtime() - cache_info->cache_timestamps[0][*it2]) > BENVOLIO_CACHE_RESOURCE_REMOVE_TIME)) {
+        if (cache_info->register_table[0][*it2] == 0 && (!check_time || (ABT_get_wtime() - cache_info->cache_timestamps[0][*it2]) > BENVOLIO_CACHE_RESOURCE_REMOVE_TIME)) {
             Cache_file_info cache_file_info2;
             cache_file_info2.fd = cache_info->fd_table[0][*it2];
             cache_file_info2.abt_id = cache_info->abt_id;
