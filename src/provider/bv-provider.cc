@@ -30,14 +30,14 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 64
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 256
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 256
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
-#define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 120
+#define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
 #define BENVOLIO_CACHE_STATISTICS 1
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
@@ -947,7 +947,7 @@ static int cache_shutdown_flag(Cache_info *cache_info) {
 
 static int cache_resource_manager(Cache_info *cache_info, abt_io_instance_id abt_id) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
-    //cache_flush_all(cache_info, 1);
+    cache_flush_all(cache_info, 1);
     return cache_info->shutdown[0];
 }
 
