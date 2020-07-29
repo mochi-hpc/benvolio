@@ -213,6 +213,49 @@ int bv_shutdown(bv_client_t client)
     return ret;
 }
 
+static int pack_mem(std::vector<io_access> *my_reqs, std::vector<std::vector<std::pair<void *, std::size_t>>> **packed_mem_ptr) {
+    unsigned j, i;
+    char *ptr;
+    uint64_t total_mem_size = 0;
+    std::vector<std::vector<std::pair<void *, std::size_t>>> *packed_mem;
+    *packed_mem_ptr = new std::vector<std::vector<std::pair<void *, std::size_t>>>;
+    packed_mem = *packed_mem_ptr;
+    
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        std::vector<std::pair<void *, std::size_t>> v;
+        std::pair<void *, std::size_t> p;
+        v.push_back(p);
+        packed_mem->push_back(v);
+        packed_mem[0][j][0].second = 0;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            total_mem_size += my_reqs[0][j].mem_vec[i].second;
+            packed_mem[0][j][0].second += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+    ptr = (char*) malloc(sizeof(char) * total_mem_size);
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        packed_mem[0][j][0].first = (void*) ptr;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(ptr, my_reqs[0][j].mem_vec[i].first, sizeof(char) * my_reqs[0][j].mem_vec[i].second);
+            
+            ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+
+    return 0;
+}
+
+static int unpack_mem(std::vector<io_access> *my_reqs, char *packed_mem_ptr) {
+    unsigned i, j;
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(my_reqs[0][j].mem_vec[i].first, packed_mem_ptr, sizeof(char) * my_reqs[0][j].mem_vec[i].second);            
+            packed_mem_ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+    return 0;
+}
+
 // use bulk transfer for the memory description
 // the locations in file we will just send over in a list
 // - could compress the file locations: they are likely to compress quite well
@@ -228,6 +271,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     std::vector<io_access> my_reqs(client->targets.size());
     size_t bytes_moved = 0;
     double time;
+    std::vector<std::vector<std::pair<void *, std::size_t>>> *packed_mem;
     /* How expensive is this? do we need to move this out of the I/O path?
      * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
@@ -253,6 +297,8 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         rpc = client->read_op;
     }
 
+    pack_mem(&my_reqs, &packed_mem);
+
     std::vector<tl::async_response> responses;
     std::vector<tl::bulk> my_bulks;
     /* i: index into container of remote targets
@@ -262,7 +308,10 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
         //printf("requests data for %s is moving to provider %d\n", filename, i);
         time = ABT_get_wtime();
-        my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
+        //my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
+
+        my_bulks.push_back(client->engine->expose(packed_mem[0][i], mode));
+
         client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
         time = ABT_get_wtime();
         responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
@@ -275,6 +324,10 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         if (ret >= 0)
             bytes_moved += ret;
     }
+    unpack_mem(&my_reqs, (char*) packed_mem[0][0][0].first);
+    free(packed_mem[0][0][0].first);
+    delete packed_mem;
+
     client->statistics.client_write_wait_request_time += ABT_get_wtime() - time;
     return bytes_moved;
 }

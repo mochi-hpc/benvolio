@@ -30,8 +30,8 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 16
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 16
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 64
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 64
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
 #define BENVOLIO_CACHE_WRITE 1
@@ -40,7 +40,6 @@
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 120
 #define BENVOLIO_CACHE_STATISTICS 1
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
-
 
 
 namespace tl = thallium;
