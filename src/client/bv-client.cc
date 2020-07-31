@@ -16,7 +16,7 @@
 #include <thallium/margo_exception.hpp>
 
 #include <assert.h>
-#define CLIENT_BUFFER_SIZE 268435456
+#define CLIENT_BUFFER_SIZE 67108864
 
 namespace tl = thallium;
 
