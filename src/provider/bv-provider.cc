@@ -63,6 +63,7 @@ typedef struct {
     double memcpy_time;
     double write_back_time;
     double cache_fetch_time;
+    double cache_fetch_match_time;
     double cache_total_time;
 } Cache_stat;
 
@@ -143,7 +144,12 @@ static void cache_write_back(Cache_file_info *cache_file_info);
 static void cache_write_back_lock(Cache_file_info *cache_file_info);
 //static void cache_flush(Cache_file_info *cache_file_info);
 //static void cache_fetch(Cache_file_info cache_file_info, off_t file_start, uint64_t file_size, int stripe_size, int stripe_count);
+#if BENVOLIO_CACHE_STATISTICS == 1
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size);
+#else
+static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, double total_time);
+#endif
+
 static void cache_remove_file_lock(Cache_info *cache_info, std::string file);
 static int cache_exist(Cache_info *cache_info, std::string file);
 static void cache_flush_all(Cache_info *cache_info, int check_time);
@@ -167,6 +173,7 @@ static void cache_add_stat(Cache_stat *cache_stat1, Cache_stat *cache_stat2) {
     cache_stat1->flush_time += cache_stat2->flush_time;
     cache_stat1->memcpy_time += cache_stat2->memcpy_time;
     cache_stat1->cache_fetch_time += cache_stat2->cache_fetch_time;
+    cache_stat1->cache_fetch_match_time += cache_stat2->cache_fetch_match_time;
     cache_stat1->write_back_time += cache_stat2->write_back_time;
     cache_stat1->cache_total_time += cache_stat2->cache_total_time;
 }
@@ -188,10 +195,10 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
         cache_add_stat(cache_stat, it2->second);
     }
 
-    printf("Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_total_time);
+    printf("Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total fetch+match time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_fetch_match_time, cache_stat->cache_total_time);
     sprintf(filename, "provider_timing_log_%d.csv", ssg_rank);
     stream = fopen(filename,"w");
-    fprintf(stream, "Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_total_time);
+    fprintf(stream, "Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total fetch+match time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_fetch_match_time, cache_stat->cache_total_time);
     fclose(stream);
 
     //cache_counter per timestamp is summed up here
@@ -254,6 +261,7 @@ static int cache_exist(Cache_info *cache_info, std::string file) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
     return cache_info->cache_table->find(file) != cache_info->cache_table->end();
 }
+
 
 #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -781,7 +789,11 @@ static void cache_flush(Cache_file_info *cache_file_info) {
     #endif
 }
 
+#if BENVOLIO_CACHE_STATISTICS == 1
+static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, double total_time) {
+#else
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size) {
+#endif
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     uint64_t my_provider;
     off_t cache_offset, block_index, subblock_index;
@@ -794,8 +806,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
     int t_index;
     #endif
-    double time;
-    double total_time = ABT_get_wtime();
+    double time, total_time2 = ABT_get_wtime();
     #endif
     stripe_size = cache_file_info->stripe_size;
     stripe_count = cache_file_info->stripe_count;
@@ -1033,7 +1044,9 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #endif
     }
     #if BENVOLIO_CACHE_STATISTICS == 1
-    cache_file_info->cache_stat->cache_total_time += ABT_get_wtime() - total_time;
+    time = ABT_get_wtime();
+    cache_file_info->cache_stat->cache_fetch_match_time += time - total_time2;
+    cache_file_info->cache_stat->cache_total_time += time - total_time;
     #endif
     //printf("ssg_rank %d reached the end of fetch match\n", cache_file_info->ssg_rank);
     return file_size - remaining_file_size;
@@ -1309,7 +1322,13 @@ static void write_ult(void *_args)
             nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
 
             #if BENVOLIO_CACHE_ENABLE == 1
+
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            #else
             file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
+            #endif            
+
             #else
             abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
             ops.push_back(write_op);
@@ -1447,7 +1466,13 @@ static void read_ult(void *_args)
 
             io_time = ABT_get_wtime();
             #if BENVOLIO_CACHE_ENABLE == 1
+
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            #else
             temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
+            #endif
+
             file_xfer += temp;
             #else
             file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor);
