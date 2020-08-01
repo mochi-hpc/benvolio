@@ -795,6 +795,8 @@ static void cache_flush(Cache_file_info *cache_file_info, off_t cache_offset) {
     }
 
     cache_file_info->cache_offset_list->erase(cache_file_info->cache_offset_list->begin());
+    delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
+    delete cache_file_info->cache_page_mutex_table[0][cache_offset];
     //Remove memory and table entry
     free(cache_file_info->cache_table[0][cache_offset]->second);
     delete cache_file_info->cache_table[0][cache_offset];
@@ -1047,7 +1049,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         // Start to match data from cache.
         {
         //Atomic block for accessing a page starting with cache_offset
-        std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_page_mutex_table[0][cache_offset]->second));
+        //std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_page_mutex_table[0][cache_offset]->second));
         #if BENVOLIO_CACHE_STATISTICS == 1
         time = ABT_get_wtime();
         #endif
