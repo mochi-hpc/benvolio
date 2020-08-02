@@ -38,7 +38,7 @@
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 0
+#define BENVOLIO_CACHE_STATISTICS 1
 #define BENVOLIO_CACHE_STATISTICS_DETAILED 0
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
@@ -795,8 +795,6 @@ static void cache_flush(Cache_file_info *cache_file_info, off_t cache_offset) {
     }
 
     cache_file_info->cache_offset_list->erase(cache_file_info->cache_offset_list->begin());
-    delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
-    delete cache_file_info->cache_page_mutex_table[0][cache_offset];
     //Remove memory and table entry
     free(cache_file_info->cache_table[0][cache_offset]->second);
     delete cache_file_info->cache_table[0][cache_offset];
@@ -866,6 +864,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             // New page and insufficient budget, we proceed to remove least recent use page.
             if (cache_file_info->cache_offset_list->size() == cache_file_info->cache_block_reserved) {
                 flush_offset = cache_file_info->cache_offset_list[0][0];
+                //printf("ssg_rank = %d flush offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) flush_offset);
                 if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
                     {
                     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_page_mutex_table[0][flush_offset]->second));
@@ -941,9 +940,14 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             #endif
             /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
             cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
-            cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+            //We may have already registered the locks.
+            if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
+                //Register cache page lock
+                cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+                //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
+            }
             // We prevent caching subblock region that can exceed current stripe.
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
@@ -1008,7 +1012,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             }
             remaining_file_size2 -= actual;
             cache_start2 = 0;
-            local_buf += actual;
         } else {
             //In some scenarios, the cache_start can beyond the cache page (bounded by the real file size), which leads to undefined behavior for read. For write, this should never happen because we should have reserved enough page size for this request.
             /* Last block, we may need to write a partial page. */
@@ -1089,20 +1092,15 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         //Deregister the page, so other threads can actually flush this particular page.
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info->cache_stat->memcpy_time += memcpy_time;
+        time = ABT_get_wtime();
+        cache_file_info->cache_stat->cache_fetch_match_time += time - total_time2;
+        cache_file_info->cache_stat->cache_total_time += time - total_time;
+        total_time2 = time;
+        total_time = time;
         #endif
         //End of timing block
         }
     }
-    #if BENVOLIO_CACHE_STATISTICS == 1
-    {
-    //This is an atomic block for getting cache page information from cache_file_info.
-    std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
-    time = ABT_get_wtime();
-    cache_file_info->cache_stat->cache_fetch_match_time += time - total_time2;
-    cache_file_info->cache_stat->cache_total_time += time - total_time;
-    }
-    #endif
-
     //printf("ssg_rank %d reached the end of fetch match\n", cache_file_info->ssg_rank);
     return file_size - remaining_file_size;
 /*
