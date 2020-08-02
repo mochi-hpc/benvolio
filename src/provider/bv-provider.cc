@@ -1088,7 +1088,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #endif
         //End of atomic block for cache page.
         }
-
+/*
         {
         //This is an atomic block for getting cache page information from cache_file_info.
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
@@ -1098,7 +1098,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         cache_file_info->cache_stat->memcpy_time += memcpy_time;
         #endif
         }
-
+*/
     }
     #if BENVOLIO_CACHE_STATISTICS == 1
     {
