@@ -38,7 +38,7 @@
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 1
+#define BENVOLIO_CACHE_STATISTICS 0
 #define BENVOLIO_CACHE_STATISTICS_DETAILED 0
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
@@ -982,6 +982,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             //return file_size - remaining_file_size;
         }
         //match part start. We move the memory copy part outside this lock so multiple threads can run in parallel.
+
         if ( remaining_file_size2 > cache_buffer_size - cache_start2 ) {
             /* We are not at the last block yet */
             actual = cache_buffer_size - cache_start2;
@@ -989,7 +990,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 //Need to mark this cache block has been updated.
                 cache_file_info->cache_update_list->insert(cache_offset);
                 #if BENVOLIO_CACHE_STATISTICS == 1
-
                 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
                 t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
                 if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
@@ -1004,7 +1004,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                     cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
                 }
                 #endif
-
                 #endif
             }
             remaining_file_size2 -= actual;
@@ -1019,7 +1018,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 
                 // Log updates in the time interval.
                 #if BENVOLIO_CACHE_STATISTICS == 1
-
                 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
                 t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
                 if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
@@ -1034,15 +1032,12 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                     cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = remaining_file_size2;
                 }
                 #endif
-
                 #endif
-
                 remaining_file_size2 = 0;
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_start2 < cache_buffer_size){
                 remaining_file_size2 -= actual;
             }
         }
-
         //end of atomic block for fetch and match
         }
 
@@ -1073,8 +1068,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             if ( cache_file_info->io_type == BENVOLIO_CACHE_WRITE ) {
                 // Copy from buffer to cache.
                 memcpy(cache_buffer + cache_start, local_buf, remaining_file_size);
-                //Need to mark this cache block has been updated.
-                cache_file_info->cache_update_list->insert(cache_offset);
                 remaining_file_size = 0;
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_start < cache_buffer_size){
                 //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
@@ -1088,17 +1081,17 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #endif
         //End of atomic block for cache page.
         }
-/*
+
         {
         //This is an atomic block for getting cache page information from cache_file_info.
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
-        //Deregister the page, so other threads can actually flush this particular page.
         cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
+        //Deregister the page, so other threads can actually flush this particular page.
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info->cache_stat->memcpy_time += memcpy_time;
         #endif
+        //End of timing block
         }
-*/
     }
     #if BENVOLIO_CACHE_STATISTICS == 1
     {
@@ -1109,6 +1102,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
     cache_file_info->cache_stat->cache_total_time += time - total_time;
     }
     #endif
+
     //printf("ssg_rank %d reached the end of fetch match\n", cache_file_info->ssg_rank);
     return file_size - remaining_file_size;
 /*
