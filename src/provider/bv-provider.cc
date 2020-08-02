@@ -1084,7 +1084,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #endif
         //End of atomic block for cache page.
         }
-
+/*
         {
         //This is an atomic block for getting cache page information from cache_file_info.
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
@@ -1100,6 +1100,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #endif
         //End of timing block
         }
+*/
     }
     //printf("ssg_rank %d reached the end of fetch match\n", cache_file_info->ssg_rank);
     return file_size - remaining_file_size;
