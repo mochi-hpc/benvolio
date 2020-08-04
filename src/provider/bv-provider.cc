@@ -30,16 +30,16 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 128
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 128
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 256
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 256
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 1
-#define BENVOLIO_CACHE_STATISTICS_DETAILED 1
+#define BENVOLIO_CACHE_STATISTICS 0
+#define BENVOLIO_CACHE_STATISTICS_DETAILED 0
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
 
@@ -916,6 +916,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*)calloc(1, sizeof(Cache_counter));
                 cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
             }
+            cache_file_info->cache_counter_table[0][t_index]->cache_page_hit_count++;
             #endif
 
             cache_file_info->cache_stat->cache_counter.cache_page_hit_count++;
@@ -940,6 +941,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
                 cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
             }
+            cache_file_info->cache_counter_table[0][t_index]->cache_page_hit_count++;
             #endif
 
             cache_file_info->cache_stat->cache_counter.cache_page_hit_count++;
