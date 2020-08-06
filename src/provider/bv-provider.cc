@@ -34,6 +34,7 @@
 #define BENVOLIO_CAHCE_MIN_N_BLOCKS 256
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
+//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 355
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
@@ -845,7 +846,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
         free(cache_file_info->cache_table[0][cache_offset]->second);
         delete cache_file_info->cache_table[0][cache_offset];
         cache_file_info->cache_table->erase(cache_offset);
-        cache_file_info->cache_offset_list->erase(std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset));
+        //cache_file_info->cache_offset_list->erase(std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset));
 
     }
 
@@ -914,13 +915,17 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 //printf("ssg_rank %d flush triggered!\n",cache_file_info->ssg_rank);
 
                 std::vector<off_t> flush_offsets;
-                
-                for ( j = 0; j < cache_file_info->cache_offset_list->size(); ++j ) {
-                    flush_offset = cache_file_info->cache_offset_list[0][j];
+                std::vector<off_t>::iterator it2, it3;
+                it2 = cache_file_info->cache_offset_list->begin();
+                while (it2 != cache_file_info->cache_offset_list->end()) {
+                    it3 = it2 + 1;
+                    flush_offset = *it2;
                     flush_offsets.push_back(flush_offset);
+                    cache_file_info->cache_offset_list->erase(it2);
                     if (flush_offsets.size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
                         break;
                     }
+                    it2 = it3;                   
                 }
                 //printf("ssg_rank = %d flush offset size = %ld\n", cache_file_info->ssg_rank, flush_offsets.size());
                 cache_flush_array(cache_file_info, &flush_offsets);
