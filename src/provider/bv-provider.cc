@@ -592,6 +592,14 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_mutex = cache_info->cache_mutex_table[0][file];
         cache_file_info->cache_offset_list = cache_info->cache_offset_list_table[0][file];
         cache_file_info->cache_block_reserved = cache_info->cache_block_reserve_table[0][file];
+        cache_info->cache_block_used[0] -= cache_file_info->cache_block_reserved;
+
+        cache_file_info->cache_block_reserved = MAX(BENVOLIO_CAHCE_MIN_N_BLOCKS, (BENVOLIO_CACHE_MAX_N_BLOCKS - cache_info->cache_block_used[0])/2);
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
+            cache_file_info->cache_block_reserved = MIN(cache_file_info->cache_block_reserved, (cache_file_info->file_size + BENVOLIO_CACHE_MAX_BLOCK_SIZE - 1) / BENVOLIO_CACHE_MAX_BLOCK_SIZE );
+        }
+
+
         #if BENVOLIO_CACHE_STATISTICS == 1
 
         #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
