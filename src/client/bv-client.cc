@@ -383,9 +383,14 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
     return ret;
 }
 
-int bv_ping(bv_client_t client)
+size_t bv_ping(bv_client_t client, size_t *nr_providers)
 {
     int ret = 0;
+    if (client == NULL) {
+        nr_providers=0;
+        return -1;
+    }
+    *nr_providers = client->targets.size();
     for (auto target : client->targets)
         ret += client->ping_op.on(target)().as<int>();
     return ret;

@@ -117,8 +117,15 @@ ssize_t bv_getsize(bv_client_t client, const char *filename);
 #define BV_NOCREATE 0
 int bv_declare(bv_client_t client, const char *filename, int flags, int mode);
 
-/* ping: returns non-zero if unable to communicate with any provider */
-int bv_ping(bv_client_t client);
+/**
+ * ping: get the health of a benvolio service
+ * - client:i     (IN)  benvolio client object
+ * - nr_providers (OUT) how many providers in the benvolio service
+ *
+ * returns: zero on success, non-zero if unable to communicate with any
+ * provider
+ */
+size_t bv_ping(bv_client_t client, size_t *nr_providers);
 
 #ifdef __cplusplus
 }
