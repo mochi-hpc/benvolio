@@ -30,11 +30,11 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 16
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 16
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 512
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 512
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
-//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
+//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 355
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
@@ -2643,7 +2643,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 args.total_io_amount = total_io_amount;
                 //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
                 size_t ntimes = 1 + (total_io_amount - 1)/bufsize;
-                ntimes = 1;
                 args.ults_active=ntimes;
                 //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
                 for (unsigned int j = 0; j< ntimes; j++) {
