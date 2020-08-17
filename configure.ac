@@ -45,24 +45,72 @@ CPPFLAGS="$ABTIO_CFLAGS $CPPFLAGS"
 CFLAGS="$ABTIO_CFLAGS $CFLAGS"
 
 
-# check that SSG was compiled with PMIX support
+# Bootstrapping: we can do it with either MPI or PMIx, but both require SSG to
+# support it.  We need to check for both SSG's level of support as well as
+# general support in the environment.
+
+# check if SSG was compiled with PMIX support
+ssg_with_pmix=no
+ssg_with_mpi=no
 AC_CHECK_LIB([ssg],
 	     [ssg_group_create_pmix],
-	     ,
-             [AC_MSG_ERROR([SSG must be built with PMIx support!])],
+	     [ssg_with_pmix=yes
+	      AC_DEFINE([SSG_HAS_PMIX], 1, [Does SSG library have PMIx support?])],
+             [],
              [-lpmix]
 )
 
-# check for PMIx: required to boostrap server provider processes
+AC_CHECK_LIB([ssg],
+	     [ssg_group_create_mpi],
+	     [ssg_with_mpi=yes
+	      AC_DEFINE([SSG_HAS_MPI], 1,[Does SSG library have MPI support])],
+	     [],
+	     [-lmpi]
+)
 
+# benvolio will use MPI, PMIx or both to bootstrap, but only if we find the
+# necessary supporting libraries
+pmix_ok=no
+mpi_ok=no
 AC_CHECK_LIB([pmix], [PMIx_Init])
 AC_MSG_CHECKING([If PMIx programs can be compiled])
 AC_LINK_IFELSE(
 	       [AC_LANG_PROGRAM([[#include<pmix.h>]], [[PMIx_Init(NULL, NULL,0);]] )],
 	       [AC_DEFINE([HAVE_PMIX], [1], [Define to 1 if compiled with PMIx support])
+	           pmix_ok=yes
 	           AC_MSG_RESULT([yes])],
 	       [AC_MSG_RESULT([no])]
-	       [AC_MSG_ERROR([PMIx required to launch remote providers]) ])
+	    )
+
+AC_MSG_CHECKING([If MPI programs can be compiled])
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include<mpi.h>]], [[MPI_Init(0,0);]])],
+    [AC_MSG_RESULT([yes])
+     mpi_ok=yes
+     AC_DEFINE([HAVE_MPI], [1], [Able to use MPI])],
+    [AC_MSG_RESULT([no])]
+    )
+
+use_pmix=no
+if test x$pmix_ok = xyes -a x$ssg_with_pmix = xyes ; then
+	use_pmix=yes
+fi
+
+use_mpi=no
+if test x$mpi_ok = xyes -a x$ssg_with_mpi = xyes ; then
+	use_mpi=yes;
+fi
+
+AM_CONDITIONAL([USE_PMIX], [ test x$use_pmix = xyes ])
+AM_CONDITIONAL([USE_MPI], [ test x$use_mpi = xyes ])
+
+# we need *some* way to bootstrap: we can support one or the other or both but not none
+AC_MSG_CHECKING([If at least one bootstrap method available])
+if test x$use_pmix = xyes -o x$use_mpi = xyes ; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_ERROR([Unable to detect MPI or PMIx ])
+fi
 
 AC_CHECK_LIB([lustreapi], [llapi_file_get_stripe])
 # checks for header files

@@ -1,9 +1,15 @@
 #include <margo.h>
 #include <abt-io.h>
 #include <ssg.h>
-#include <ssg-pmix.h>
 #include <getopt.h>
+#ifdef USE_PMIX
 #include <pmix.h>
+#include <ssg-pmix.h>
+#endif
+#ifdef USE_MPI
+#include <mpi.h>
+#include <ssg-mpi.h>
+#endif
 #include "bv-provider.h"
 
 
@@ -45,9 +51,8 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     abt_io_instance_id abtio;
     bv_svc_provider_t bv_id;
-    pmix_proc_t proc;
     int ret;
-    int rank, nprocs;
+    int nprocs;
     ssg_group_id_t gid;
     int c;
     char *proto=NULL;
@@ -91,13 +96,24 @@ int main(int argc, char **argv)
     abtio = abt_io_init(nthreads);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
+    ret = ssg_init();
+    ASSERT(ret == 0, "ssg_init() failed (ret = %d)\n", ret);
+
+#ifdef USE_PMIX
+    pmix_proc_t proc;
     ret = PMIx_Init(&proc, NULL, 0);
     ASSERT(ret == PMIX_SUCCESS, "PMIx_Init failed (ret = %d)\n", ret);
 
-    ret = ssg_init();
-    ASSERT(ret == 0, "ssg_init() failed (ret = %d)\n", ret);
     gid = ssg_group_create_pmix(mid, BV_PROVIDER_GROUP_NAME, proc, NULL, NULL, NULL);
     ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_pmix() failed (ret = %s)","SSG_GROUP_ID_NULL");
+#endif
+
+#ifdef USE_MPI
+    MPI_Init(&argc, &argv);
+    gid = ssg_group_create_mpi(mid, BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, NULL, NULL, NULL);
+    ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_mpi() failed (ret = %s)" , "SSG_GROUP_ID_NULL");
+#endif
+
     finalize_args_t args = {
         .g_id = gid,
         .m_id = mid
@@ -117,5 +133,11 @@ int main(int argc, char **argv)
     free(statefile);
 
     margo_wait_for_finalize(mid);
+#ifdef USE_PMIX
     PMIx_Finalize(NULL, 0);
+#endif
+
+#ifdef USE_MPI
+    MPI_Finalize();
+#endif
 }

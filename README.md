@@ -22,6 +22,7 @@ repository, but just in case you are not, you can get the latest benvolio from
 * [thallium](https://xgitlab.cels.anl.gov/sds/thallium) C++ wrappers to Mercury, Margo, and Argobots
 * [ssg](https://xgitlab.cels.anl.gov/sds/ssg) group management for server identification
 * [abt-io](https://xgitlab.cels.anl.gov/sds/abt-io/) providing I/O bindings for Argobots
+* For the provider, either MPI or PMIx to launch the service.
 
 We find the [spack](https://spack.readthedocs.io/en/latest/) package manager
 very helpful for building everything you need.  We have some additional
@@ -49,7 +50,9 @@ and the _client_ .  A more complicated example would run the provider on one or
 more nodes and the client on one or more (possibly the same) node.  In this
 case we are just going to run everything on one node.
 
-1. PMIx:  We recently switched benvolio to use [PMIx](https://pmix.org/).  Some
+#### Provider with PMIx
+
+1. PMIx:  Benvolio can use [PMIx](https://pmix.org/).  Some
 job schedulers like SLURM are PMIx-aware, but more likely you will have to use
 the PMIx reference runtime (prrte).  Spack can install that for you (`spack
 install prrte` but NOTE: you'll need the one line fix in
@@ -71,7 +74,22 @@ arguments are mandatory.
 
     $ prun -np 2 ./src/provider/bv-server -f bv.svc -p sm:  &
 
-3. A simple benvolio test:  `tests/simple` runs through a few I/O patterns.  It
+#### Provider with MPI
+
+1. Launching with MPI depends a lot on your platform.  `aprun`, `jsrun`, or simply
+`mpiexec` are all possible mechanisms to start an MPI job.  For simplicity I
+will assume `mpiexec`.  Consult your site-specific documentation if there is a
+more apropriate mechanism
+
+2. The command line arguments for `bv-server` are the same no matter how you launch the providers.
+
+    $ mpiexec -np 2 ./src/provider/bv-server -f bv.svc -p sm: &
+
+#### Client
+
+No matter which way you started your benvolio provider, client code runs the same way.
+
+1. A simple benvolio test:  `tests/simple` runs through a few I/O patterns.  It
 has one mandatory argument: the name of the provider statefile.  You can give
 it an optional file name, or it will write to and read from a file called
 'dummy' by default. If you see `Error: PMIx event notification registration
@@ -81,8 +99,8 @@ failed! [-31]` you can ignore that for now.  We're still investigating
    $ ./tests/simple bv.svc
 
 
-4. cleanup.  the `bv_shutdown` tool is a simple client with only one job: ask
-the provider to shut itself down.  Then we stop the prrte daemons with the
+2. cleanup.  the `bv_shutdown` tool is a simple client with only one job: ask
+the provider to shut itself down.  If necessary, we stop the prrte daemons with the
 '-terminate' command
 
     $ ./src/client/bv-shutdown bv.svc
