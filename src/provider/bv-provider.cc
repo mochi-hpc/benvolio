@@ -30,17 +30,17 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 256
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 256
+#define BENVOLIO_CACHE_MAX_N_BLOCKS 16
+#define BENVOLIO_CAHCE_MIN_N_BLOCKS 16
 #define BENVOLIO_CACHE_MAX_FILE 5
 #define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
-//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 355
+//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 65536
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 0
-#define BENVOLIO_CACHE_STATISTICS_DETAILED 0
+#define BENVOLIO_CACHE_STATISTICS 1
+#define BENVOLIO_CACHE_STATISTICS_DETAILED 1
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
 
@@ -82,6 +82,7 @@ typedef struct {
     std::map<std::string, int> *cache_block_reserve_table;
     std::map<std::string, double> *cache_timestamps;
     std::map<std::string, int> *fd_table;
+    std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*> *cache_page_mutex_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -113,11 +114,20 @@ typedef struct {
     std::set<off_t>* cache_update_list;
     /* The order of cache blocks fetched. When we flush a block, it starts from the first element of the list*/
     std::vector<off_t>* cache_offset_list;
+    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_page_mutex_table;
+    int cache_evictions;
     #if BENVOLIO_CACHE_STATISTICS == 1
+    Cache_stat *cache_stat;
+    ABT_mutex *thread_mutex;
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
     std::map<int, Cache_counter*> *cache_counter_table;
     #endif
     #endif
+    std::map<off_t, std::pair<uint64_t, char*>> *cache_page_table;
+    std::set<off_t> *page_used;
+    std::vector<uint64_t> *file_sizes;
+    std::vector<off_t> *file_starts;
+
     double *init_timestamp;
     tl::mutex *cache_mutex;
     /* Read or write operation?*/
@@ -127,18 +137,15 @@ typedef struct {
     int stripe_count;
     int stripe_size;
     size_t file_size;
-    #if BENVOLIO_CACHE_STATISTICS == 1
-    Cache_stat *cache_stat;
-    #endif
     /*Debug purpose*/
     int ssg_rank;
     //Cache_info *cache_info;
 } Cache_file_info;
 
 static void cache_register(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
-static void cache_deregister(Cache_info *cache_info, std::string file);
 static void cache_register_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
-static void cache_deregister_lock(Cache_info *cache_info, std::string file);
+static void cache_deregister_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
+static void cache_deregister(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
 static void cache_init(Cache_info *cache_info);
 static void cache_finalize(Cache_info *cache_info);
 static void cache_write_back(Cache_file_info *cache_file_info);
@@ -151,9 +158,15 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, double total_time);
 #endif
 
+static void cache_count_request_pages(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, std::set<off_t> *pages);
+static void cache_count_request_extra_pages(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, std::set<off_t> *pages);
+static size_t cache_count_requests_pages(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes);
 static void cache_remove_file_lock(Cache_info *cache_info, std::string file);
 static int cache_exist(Cache_info *cache_info, std::string file);
 static void cache_flush_all(Cache_info *cache_info, int check_time);
+static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size);
+static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_t> *cache_offsets);
+
 #if BENVOLIO_CACHE_STATISTICS == 1
 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
 static void cache_page_usage_log(Cache_info *cache_info, std::string file);
@@ -479,7 +492,7 @@ static void cache_flush_all(Cache_info *cache_info, int check_time) {
 
             cache_register(cache_info, *it2, &cache_file_info2);
             cache_write_back(&cache_file_info2);
-            cache_deregister(cache_info, *it2);
+            cache_deregister(cache_info, *it2, &cache_file_info2);
             cache_remove_file(cache_info, *it2);
         }
     }
@@ -488,16 +501,6 @@ static void cache_flush_all(Cache_info *cache_info, int check_time) {
 static void cache_flush_all_lock(Cache_info *cache_info, int check_time) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
     cache_flush_all(cache_info, check_time);
-}
-
-
-static void cache_deregister(Cache_info *cache_info, std::string file) {
-    cache_info->register_table[0][file] -= 1;
-}
-
-static void cache_deregister_lock(Cache_info *cache_info, std::string file) {
-    std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
-    cache_deregister(cache_info, file);
 }
 
 static void cache_request_counter(Cache_info *cache_info, const std::vector<uint64_t> &file_sizes) {
@@ -517,6 +520,182 @@ static void cache_request_counter(Cache_info *cache_info, const std::vector<uint
     #endif
 }
 
+static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages, int page_index) {
+    std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+    unsigned i, remove_counter, counter, remaining_pages;
+    std::vector<off_t>::iterator it;
+
+    // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
+    remaining_pages = 0;
+    for ( it = pages->begin() + page_index; it != pages->end(); ++it ) {
+        if (cache_file_info->cache_table->find(*it) == cache_file_info->cache_table->end()) {
+            remaining_pages++;
+        }
+    }
+    off_t flush_offset;
+    std::vector<off_t> flush_offsets;
+    std::vector<off_t>::iterator it2;
+    // Entering this condition means that we are out of memory budget, we need to try to remove pages that are not currently used by anyone.
+    if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
+        // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
+        remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
+        counter = 0;
+        it2 = cache_file_info->cache_offset_list->begin();
+        while (it2 != cache_file_info->cache_offset_list->end()) {
+            flush_offset = *it2;
+            if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
+                flush_offsets.push_back(flush_offset);
+                counter++;
+                if ( counter == remove_counter ) {
+                    break;
+                }
+            }
+            ++it2;
+        }
+        if (flush_offsets.size()) {
+            cache_flush_array(cache_file_info, &flush_offsets);
+        }
+    }
+
+    // We have to process at least one page, regardless of memory budget. This could be a bad idea.
+    for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
+        cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+        cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
+        cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
+    }
+    page_index++;
+    // As long as we have budgets, we keep allocating as many pages as possible.
+    while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
+        for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
+            cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+            cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
+            cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
+        }
+        page_index++;
+    }
+    return page_index;
+}
+
+static void cache_page_deregister2(Cache_file_info *cache_file_info, std::vector<off_t> *pages, int start, int end) {
+    std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+    cache_file_info->file_starts->clear();
+    cache_file_info->file_sizes->clear();
+    std::vector<off_t>::iterator it;
+    off_t cache_offset;
+    unsigned i;
+    it = pages->begin() + start;
+    for ( i = start; i < end; ++i  ) {
+        cache_offset = *it;
+        cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
+        cache_file_info->page_used->erase(cache_offset);
+        it++;
+    }
+}
+
+
+static void cache_partition_request(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
+    //std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+    std::vector<off_t>* file_starts_new;
+    std::vector<uint64_t>* file_sizes_new;
+    std::set<off_t> pages;
+    off_t cache_offset;
+    size_t i, j, last_request_index;
+    uint64_t cache_size, cache_size2;
+    int stripe_size = cache_file_info->stripe_size;
+
+    if (BENVOLIO_CACHE_MAX_BLOCK_SIZE > stripe_size) {
+        cache_size = stripe_size;
+    } else {
+        cache_size = BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+    }
+
+    /* Figure out how many pages we are touching*/
+    for ( i = 0; i < file_starts.size(); ++i ) {
+        cache_count_request_pages(cache_file_info, file_starts[i], file_sizes[i], &pages);
+    }
+    //printf("total number of pages = %ld, page reserved = %ld\n", pages.size(), cache_file_info->cache_block_reserved);
+
+    file_starts_array[0] = new std::vector<std::vector<off_t>*>(pages.size());
+    file_sizes_array[0] = new std::vector<std::vector<uint64_t>*>(pages.size());
+    pages_vec[0] = new std::vector<off_t>(pages.size());
+    std::set<off_t>::iterator it;
+    last_request_index = 0;
+    j = 0;
+    for ( it = pages.begin(); it != pages.end(); ++it ) {
+        file_starts_new = new std::vector<off_t>;
+        file_sizes_new = new std::vector<uint64_t>;
+        file_starts_array[0][0][j] = file_starts_new;
+        file_sizes_array[0][0][j] = file_sizes_new;
+        pages_vec[0][0][j] = *it;
+        j++;
+        cache_offset = *it;
+        //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
+        cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
+        for ( i = 0; i < file_starts.size(); ++i ) {
+            if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
+                //Start position inside cache page.
+                file_starts_new->push_back(file_starts[i]);
+                if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
+                    //Request fall into the page entirely.
+                    file_sizes_new->push_back(file_sizes[i]);
+                    // This request is done, we do not need it anymore later.
+                } else {
+                    //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
+                    file_sizes_new->push_back(cache_offset + cache_size2 - file_starts[i]);
+                    //last_request_index = i;
+                    //break;
+                }
+            } else if ( file_starts[i] < cache_offset && file_starts[i] + file_sizes[i] > cache_offset ) {
+                //Start position is before the cache page, but part of its tail is inside the current page, we want a partial tail.
+                file_starts_new->push_back(cache_offset);
+                if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
+                    // The end of current request tail fall into this page, we are done here.
+                    file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
+                    //last_request_index = i;
+                } else {
+                    file_sizes_new->push_back(cache_size2);
+                }
+            } else {
+                // This request is after this page, we leave.
+                //last_request_index = i;
+                //break;
+            }
+        }
+    }
+}
+
+static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
+    std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+    size_t pages = cache_count_requests_pages(cache_file_info, file_starts, file_sizes);
+    cache_file_info->page_used = new std::set<off_t>;
+    cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
+    if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
+        cache_file_info->cache_evictions = 1;
+        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+    } else {
+        //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+        cache_file_info->cache_evictions = 0;
+        for ( size_t i = 0; i < file_starts.size(); ++i ) {
+            cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
+        }
+    }
+}
+
+static void cache_page_deregister(Cache_file_info *cache_file_info) {
+    if (!cache_file_info->cache_evictions) {
+        std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+        off_t cache_offset;
+        std::set<off_t>::iterator it;
+        for ( it = cache_file_info->page_used->begin(); it != cache_file_info->page_used->end(); ++it ) {
+            cache_offset = *it;
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
+        }
+    }
+    delete cache_file_info->cache_page_table;
+    delete cache_file_info->page_used;
+}
+
 /*
  * Initialize a cache_file_info here. It is possible that we should have some additional arguments for I/O to be set as well.
  * We can assume this function register cache_info with some new vectors (or retrieve from it).
@@ -524,23 +703,24 @@ static void cache_request_counter(Cache_info *cache_info, const std::vector<uint
 */
 static void cache_register(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info) {
     cache_file_info->init_timestamp = cache_info->init_timestamp;
+    #if BENVOLIO_CACHE_STATISTICS == 1
+
+    #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+    cache_file_info->cache_counter_table = new std::map<int, Cache_counter*>;
+    #endif
+
+    cache_file_info->cache_stat = (Cache_stat*) calloc(1, sizeof(Cache_stat));
+    #endif
     if (cache_info->cache_table->find(file) == cache_info->cache_table->end()) {
         cache_file_info->cache_table = new std::map<off_t, std::pair<uint64_t, char*>*>;
         cache_file_info->cache_update_list = new std::set<off_t>;
         cache_file_info->cache_mutex = new tl::mutex;
         cache_file_info->cache_offset_list = new std::vector<off_t>;
-        #if BENVOLIO_CACHE_STATISTICS == 1
-
-        #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
-        cache_file_info->cache_counter_table = new std::map<int, Cache_counter*>;
-        #endif
-
-        cache_file_info->cache_stat = (Cache_stat*) calloc(1, sizeof(Cache_stat));
-        #endif
+        cache_file_info->cache_page_mutex_table = new std::map<off_t, std::pair<int, tl::mutex*>*>;
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
         if (cache_info->cache_block_used[0] >= BENVOLIO_CACHE_MAX_N_BLOCKS) {
-            printf("ssg_rank %d entered eager cache write-back mechanism!\n", cache_info->ssg_rank);
+            printf("ssg_rank %d entered eager cache write-back mechanism! page used = %ld, budget = %ld\n", cache_info->ssg_rank, cache_info->cache_block_used[0], BENVOLIO_CACHE_MAX_N_BLOCKS);
             cache_flush_all(cache_info, 0);
         }
 
@@ -561,17 +741,20 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_info->cache_mutex_table[0][file] = cache_file_info->cache_mutex;
         cache_info->cache_offset_list_table[0][file] = cache_file_info->cache_offset_list;
         cache_info->cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
+        cache_info->cache_page_mutex_table[0][file] = cache_file_info->cache_page_mutex_table;
+	cache_info->fd_table[0][file] = cache_file_info->fd;
+
+        //printf("ssg_rank %d entered here checkpoint 1\n", cache_file_info->ssg_rank);
         #if BENVOLIO_CACHE_STATISTICS == 1
 
         #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
-        cache_info->cache_counter_table[0][file] = cache_file_info->cache_counter_table;
+        //cache_info->cache_counter_table[0][file] = cache_file_info->cache_counter_table;
+        cache_info->cache_counter_table[0][file] = new std::map<int, Cache_counter*>;
         #endif
 
-        cache_info->cache_stat_table[0][file] = cache_file_info->cache_stat;
+        cache_info->cache_stat_table[0][file] = (Cache_stat*) calloc(1, sizeof(Cache_stat));
         #endif
 	//Record file descriptor to global cache table (we may need to get it in unavailable contexts). We should only do this when the file is first met.
-	cache_info->fd_table[0][file] = cache_file_info->fd;
-
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info->cache_stat->cache_counter.files_register_count++;
 
@@ -581,26 +764,37 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
             cache_file_info->cache_counter_table[0][t_index]->files_register_count++;
         } else {
             cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
-            cache_info->cache_counter_table[0][file][0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+            cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
             cache_file_info->cache_counter_table[0][t_index]->files_register_count++;
         }
         #endif
 
         #endif
+
     } else {
         cache_file_info->cache_table = cache_info->cache_table[0][file];
         cache_file_info->cache_update_list = cache_info->cache_update_table[0][file];
         cache_file_info->cache_mutex = cache_info->cache_mutex_table[0][file];
         cache_file_info->cache_offset_list = cache_info->cache_offset_list_table[0][file];
+        cache_file_info->cache_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
 
         cache_file_info->cache_block_reserved = cache_info->cache_block_reserve_table[0][file];
+
+        //printf("block used = %ld - %ld\n", cache_info->cache_block_used[0], cache_file_info->cache_block_reserved);
         cache_info->cache_block_used[0] -= cache_file_info->cache_block_reserved;
         cache_file_info->cache_block_reserved = MAX(BENVOLIO_CAHCE_MIN_N_BLOCKS, (BENVOLIO_CACHE_MAX_N_BLOCKS - cache_info->cache_block_used[0])/2);
         if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
             cache_file_info->cache_block_reserved = MIN(cache_file_info->cache_block_reserved, (cache_file_info->file_size + BENVOLIO_CACHE_MAX_BLOCK_SIZE - 1) / BENVOLIO_CACHE_MAX_BLOCK_SIZE );
         }
-
-
+        //printf("block used = %ld + %ld\n", cache_info->cache_block_used[0], cache_file_info->cache_block_reserved);
+        cache_info->cache_block_used[0] += cache_file_info->cache_block_reserved;
+/*
+        cache_file_info->cache_block_reserved += 1;
+        cache_info->cache_block_used[0] += 1;
+        cache_info->cache_block_reserve_table[0][file] += 1;
+*/
+        cache_info->cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
+/*
         #if BENVOLIO_CACHE_STATISTICS == 1
 
         #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -609,7 +803,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
 
         cache_file_info->cache_stat = cache_info->cache_stat_table[0][file];
         #endif
-
+*/
         cache_info->register_table[0][file] += 1;
         cache_info->cache_timestamps[0][file] = ABT_get_wtime();
 
@@ -622,7 +816,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
             cache_file_info->cache_counter_table[0][t_index]->files_reuse_register_count++;
         } else {
             cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
-            cache_info->cache_counter_table[0][file][0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+            cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
             cache_file_info->cache_counter_table[0][t_index]->files_reuse_register_count++;
         }
         #endif
@@ -648,6 +842,53 @@ static void cache_register_lock(Cache_info *cache_info, std::string file, Cache_
     cache_register(cache_info, file, cache_file_info);
 }
 
+static void cache_deregister(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info) {
+    cache_info->register_table[0][file] -= 1;
+    #if BENVOLIO_CACHE_STATISTICS == 1
+
+    #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+    int t_index;
+    std::map<int, Cache_counter*>* global_cache_counter_table = cache_info->cache_counter_table[0][file];
+    std::map<off_t, uint64_t> *local_cache_page_usage,*global_cache_page_usage;
+    std::map<int, Cache_counter*>::iterator it;
+    std::map<off_t, uint64_t>::iterator it2;
+    for ( it = cache_file_info->cache_counter_table->begin(); it != cache_file_info->cache_counter_table->end(); ++it ) {
+        t_index = it->first;
+        if (global_cache_counter_table->find(t_index) == global_cache_counter_table->end()) {
+            global_cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
+            global_cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+        }
+        cache_add_counter(global_cache_counter_table[0][t_index], cache_file_info->cache_counter_table[0][t_index]);
+
+        global_cache_page_usage = global_cache_counter_table[0][t_index]->cache_page_usage;
+        // Whenever we initialize a time slot, this cache_page_usage table must be initilized even if it is needed at the moment, so we are safe here.
+        local_cache_page_usage = it->second->cache_page_usage;
+        for ( it2 = local_cache_page_usage->begin(); it2 != local_cache_page_usage->end(); ++it2 ) {
+            if (global_cache_page_usage->find(it2->first) == global_cache_page_usage->end()) {
+                global_cache_page_usage[0][it2->first] = it2->second;
+            } else {
+                global_cache_page_usage[0][it2->first] += it2->second;
+            }
+        }
+    }
+    // Local cache_counter_table free.
+    for ( it = cache_file_info->cache_counter_table->begin(); it != cache_file_info->cache_counter_table->end(); ++it) {
+        delete it->second->cache_page_usage;
+        free(it->second);
+    }
+    delete cache_file_info->cache_counter_table;
+    #endif
+    cache_add_stat(cache_info->cache_stat_table[0][file], cache_file_info->cache_stat);
+    delete cache_file_info->cache_stat;
+    #endif
+}
+
+static void cache_deregister_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info) {
+    std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
+    cache_deregister(cache_info, file, cache_file_info);
+
+}
+
 
 static void cache_init(Cache_info *cache_info) {
     cache_info->cache_table = new std::map<std::string, std::map<off_t, std::pair<uint64_t, char*>*>*>;
@@ -659,6 +900,7 @@ static void cache_init(Cache_info *cache_info) {
     cache_info->cache_mutex = new tl::mutex;
     cache_info->cache_timestamps = new std::map<std::string, double>;
     cache_info->fd_table = new std::map<std::string, int>;
+    cache_info->cache_page_mutex_table = new std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*>;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -700,6 +942,17 @@ static void cache_finalize(Cache_info *cache_info) {
     for (it5 = cache_info->cache_offset_list_table->begin(); it5 != cache_info->cache_offset_list_table->end(); ++it5) {
         delete it5->second;
     }
+
+    std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*>::iterator it10;
+    for (it10 = cache_info->cache_page_mutex_table->begin(); it10 != cache_info->cache_page_mutex_table->end(); ++it10) {
+        std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
+        for (it11 = it10->second->begin(); it11 != it10->second->end(); ++it11) {
+            delete it11->second->second;
+            delete it11->second;
+        }
+        delete it10->second;
+    }
+
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -843,10 +1096,12 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
             it2++;
         }
         //Remove memory and table entry
+
         free(cache_file_info->cache_table[0][cache_offset]->second);
         delete cache_file_info->cache_table[0][cache_offset];
         cache_file_info->cache_table->erase(cache_offset);
-        //cache_file_info->cache_offset_list->erase(std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset));
+        std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
+        cache_file_info->cache_offset_list->erase(it3);
 
     }
 
@@ -856,6 +1111,361 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
     #endif
 }
 
+static void cache_count_request_pages(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, std::set<off_t> *pages) {
+    uint64_t my_provider;
+    off_t cache_offset, block_index, subblock_index;
+    off_t cache_start;
+    int stripe_count, stripe_size;
+    size_t i, cache_size, cache_blocks;
+    stripe_size = cache_file_info->stripe_size;
+    stripe_count = cache_file_info->stripe_count;
+
+    if (BENVOLIO_CACHE_MAX_BLOCK_SIZE > stripe_size) {
+        cache_size = stripe_size;
+    } else {
+        cache_size = BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+    }
+
+    // We can assume that non-contiguous block does not span across two Lustre stripes because the remote client should have called ad_lustre_calc_my_req kind of function to chop this kind of requests. However, it does not harm to be extra careful here.
+    my_provider = ((file_start % (stripe_size * stripe_count)) / stripe_size);
+    //block_index is from 0, 1, 2, 3..... We can multiply this by a whole lustre stripe to work out the beginning of caches.
+    block_index = file_start / (stripe_size * stripe_count);
+    subblock_index = (file_start % stripe_size) / cache_size;
+    cache_start = (file_start % stripe_size) % cache_size;
+    // Simplified from cache_blocks = ((file_start + file_size-1) %stripe_size + 1 + cache_size - 1) / cache_size;
+    cache_blocks = ((file_start + file_size - 1) % stripe_size + cache_size) / cache_size;
+    for ( i = subblock_index; i < cache_blocks; ++i ) {
+        cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
+        //printf("touching cache_offset = %llu\n", (long long unsigned) cache_offset);
+        /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_offset + cache_start >= cache_file_info->file_size) {
+            break;
+        }
+        pages->insert(cache_offset);
+    }
+}
+
+static void cache_count_request_extra_pages(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, std::set<off_t> *pages) {
+    uint64_t my_provider;
+    off_t cache_offset, block_index, subblock_index;
+    off_t cache_start;
+    int stripe_count, stripe_size;
+    size_t i, cache_size, cache_blocks;
+    stripe_size = cache_file_info->stripe_size;
+    stripe_count = cache_file_info->stripe_count;
+
+    if (BENVOLIO_CACHE_MAX_BLOCK_SIZE > stripe_size) {
+        cache_size = stripe_size;
+    } else {
+        cache_size = BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+    }
+
+    // We can assume that non-contiguous block does not span across two Lustre stripes because the remote client should have called ad_lustre_calc_my_req kind of function to chop this kind of requests. However, it does not harm to be extra careful here.
+    my_provider = ((file_start % (stripe_size * stripe_count)) / stripe_size);
+    //block_index is from 0, 1, 2, 3..... We can multiply this by a whole lustre stripe to work out the beginning of caches.
+    block_index = file_start / (stripe_size * stripe_count);
+    subblock_index = (file_start % stripe_size) / cache_size;
+    cache_start = (file_start % stripe_size) % cache_size;
+    // Simplified from cache_blocks = ((file_start + file_size-1) %stripe_size + 1 + cache_size - 1) / cache_size;
+    cache_blocks = ((file_start + file_size - 1) % stripe_size + cache_size) / cache_size;
+    for ( i = subblock_index; i < cache_blocks; ++i ) {
+        cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
+        //printf("touching cache_offset = %llu\n", (long long unsigned) cache_offset);
+        /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_offset + cache_start >= cache_file_info->file_size) {
+            break;
+        }
+        if (cache_file_info->cache_table->find(cache_offset) == cache_file_info->cache_table->end() ) {
+            pages->insert(cache_offset);
+        }
+    }
+}
+
+static size_t cache_count_requests_pages(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes) {
+    std::set<off_t> pages;
+    size_t i;
+    for ( i = 0; i < file_starts.size(); ++i ) {
+        cache_count_request_extra_pages(cache_file_info, file_starts[i], file_sizes[i], &pages);
+    }
+
+    return pages.size();
+}
+
+/**
+ * Actively initilize all pages for a request.
+*/
+static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size) {
+    uint64_t my_provider;
+    off_t cache_offset, block_index, subblock_index;
+    off_t cache_start, flush_offset;
+    int stripe_count, stripe_size;
+    size_t actual, i, cache_size, cache_size2, cache_blocks;
+    stripe_size = cache_file_info->stripe_size;
+    stripe_count = cache_file_info->stripe_count;
+
+    if (BENVOLIO_CACHE_MAX_BLOCK_SIZE > stripe_size) {
+        cache_size = stripe_size;
+    } else {
+        cache_size = BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+    }
+
+    // We can assume that non-contiguous block does not span across two Lustre stripes because the remote client should have called ad_lustre_calc_my_req kind of function to chop this kind of requests. However, it does not harm to be extra careful here.
+    my_provider = ((file_start % (stripe_size * stripe_count)) / stripe_size);
+    //block_index is from 0, 1, 2, 3..... We can multiply this by a whole lustre stripe to work out the beginning of caches.
+    block_index = file_start / (stripe_size * stripe_count);
+    subblock_index = (file_start % stripe_size) / cache_size;
+    cache_start = (file_start % stripe_size) % cache_size;
+    // Simplified from cache_blocks = ((file_start + file_size-1) %stripe_size + 1 + cache_size - 1) / cache_size;
+    cache_blocks = ((file_start + file_size - 1) % stripe_size + cache_size) / cache_size;
+
+    for ( i = subblock_index; i < cache_blocks; ++i ) {
+        cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
+        /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_offset + cache_start >= cache_file_info->file_size) {
+            break;
+        }
+
+        std::vector<off_t>::iterator it = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
+        if (it != cache_file_info->cache_offset_list->end()) {
+            // Old page? move it to the back of the list.
+            cache_file_info->cache_offset_list->erase(it);
+        }
+        cache_file_info->cache_offset_list->push_back(cache_offset);
+
+        if (cache_file_info->io_type == BENVOLIO_CACHE_WRITE) {
+            cache_file_info->cache_update_list->insert(cache_offset);
+        }
+
+        if ( cache_file_info->cache_table->find(cache_offset) == cache_file_info->cache_table->end() ) {
+            /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
+            cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
+            // We prevent caching subblock region that can exceed current stripe.
+            cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
+
+            // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
+            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+
+            if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
+                //Register cache page lock
+                cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+                //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
+            }
+
+            // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
+
+            if (cache_file_info->io_type == BENVOLIO_CACHE_READ || ( (i == subblock_index && cache_offset < file_start) || file_start + file_size < cache_offset + cache_size2 ) ) {
+                actual = abt_io_pread(cache_file_info->abt_id, cache_file_info->fd, cache_file_info->cache_table[0][cache_offset]->second, cache_size2, cache_offset);
+                //printf("reading %ld bytes to offset %ld\n", actual, cache_offset);
+            } else {
+                actual = 0;
+            }
+            // There is one exception, what if the file does not exist and a write operation is creating it? We should give the cache enough region to cover the write operation despite the fact that the read operation responded insufficient bytes.
+            if (cache_file_info->io_type == BENVOLIO_CACHE_WRITE) {
+                // Last block has "remainder" number of bytes, otherwise we can have full cache size.
+                if ( i == cache_blocks - 1 ) {
+                    cache_file_info->cache_table[0][cache_offset]->first = (((file_start + file_size - 1) % stripe_size) % cache_size) + 1;
+                } else {
+                    cache_file_info->cache_table[0][cache_offset]->first = cache_size2;
+                }
+            } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
+                cache_file_info->cache_table[0][cache_offset]->first = (uint64_t) actual;
+            }
+
+        } else if (cache_file_info->io_type == BENVOLIO_CACHE_WRITE) {
+            // We may need to enlarge the cache array size in the last block of this stripe when a new write operation comes in because the new offset can exceed the cache domain.
+            cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
+            if (file_start + file_size >= cache_offset + cache_size2) {
+                // Largest possible cache we can have because the file range has been extended
+                cache_file_info->cache_table[0][cache_offset]->first = cache_size2;
+            } else if (cache_file_info->cache_table[0][cache_offset]->first < (((file_start + file_size - 1) % stripe_size) % cache_size) + 1) {
+                // Enlarge the cache accordingly if necessary
+                cache_file_info->cache_table[0][cache_offset]->first = (((file_start + file_size - 1) % stripe_size) % cache_size) + 1;
+            }
+        }
+        // Page registered for lock free usage later in lower level. This page must not be evicted for any reasons until the count return to zero.
+        if ( cache_file_info->page_used->find(cache_offset) == cache_file_info->page_used->end() ) {
+            // Make sure the reference counter is only updated once by a single RPC
+            cache_file_info->page_used->insert(cache_offset);
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->first++;
+        }
+        // Not in the previous condition because the cache size may change, we want the latest cache page size updated here.
+        std::pair<uint64_t, char*> v;
+        v.first = cache_file_info->cache_table[0][cache_offset]->first;
+        v.second = cache_file_info->cache_table[0][cache_offset]->second;
+        cache_file_info->cache_page_table[0][cache_offset] = v;
+    }
+}
+
+#if BENVOLIO_CACHE_STATISTICS == 1
+static size_t cache_fetch_match_lock_free(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, double total_time) {
+#else
+static size_t cache_fetch_match_lock_free(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size) {
+#endif
+/*
+    #if BENVOLIO_CACHE_STATISTICS == 1
+    std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
+    #endif
+*/
+    uint64_t my_provider;
+    off_t cache_offset, block_index, subblock_index;
+    off_t cache_start;
+    size_t actual, i, cache_size, cache_size2, cache_blocks;
+    uint64_t remaining_file_size = file_size, cache_page_size;
+    int stripe_count, stripe_size;
+    #if BENVOLIO_CACHE_STATISTICS == 1
+
+    #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+    int t_index;
+    #endif
+    double time, total_time2 = ABT_get_wtime();
+    #endif
+    stripe_size = cache_file_info->stripe_size;
+    stripe_count = cache_file_info->stripe_count;
+
+    if (BENVOLIO_CACHE_MAX_BLOCK_SIZE > stripe_size) {
+        cache_size = stripe_size;
+    } else {
+        cache_size = BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+    }
+
+    // We can assume that non-contiguous block does not span across two Lustre stripes because the remote client should have called ad_lustre_calc_my_req kind of function to chop this kind of requests. However, it does not harm to be extra careful here.
+    my_provider = ((file_start % (stripe_size * stripe_count)) / stripe_size);
+    //block_index is from 0, 1, 2, 3..... We can multiply this by a whole lustre stripe to work out the beginning of caches.
+    block_index = file_start / (stripe_size * stripe_count);
+    subblock_index = (file_start % stripe_size) / cache_size;
+    cache_start = (file_start % stripe_size) % cache_size;
+    // Simplified from cache_blocks = ((file_start + file_size-1) %stripe_size + 1 + cache_size - 1) / cache_size;
+    cache_blocks = ((file_start + file_size - 1) % stripe_size + cache_size) / cache_size;
+
+    //printf("cache fetch subblocks_index = %llu, cache_blocks = %llu\n", (long long unsigned) subblock_index, (long long unsigned) cache_blocks );
+    //printf("ssg_rank %d file_start=%llu, file size=%llu, cache_start = %llu\n",cache_file_info->ssg_rank, file_start, file_size, (long long unsigned) cache_start);
+    for ( i = subblock_index; i < cache_blocks; ++i ) {
+        cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
+        /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_offset + cache_start >= cache_file_info->file_size) {
+            //printf("ssg_rank = %d, cache offset %llu is beyond file size %llu\n", cache_file_info->ssg_rank, (long long unsigned )cache_offset, (long long unsigned) cache_file_info->file_size);
+            break;
+        }
+
+        // It is impossible for this branch to have cache pages uninitialized at this point.
+        cache_page_size = cache_file_info->cache_page_table[0][cache_offset].first;
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+        #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+        t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
+        if (cache_file_info->cache_counter_table->find(t_index) == cache_file_info->cache_counter_table->end() ) {
+            cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*)calloc(1, sizeof(Cache_counter));
+            cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+        }
+        #endif
+        cache_file_info->cache_stat->cache_counter.cache_page_hit_count++;
+        ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+        #endif
+
+        // Start to match data from cache.
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        if ( remaining_file_size > cache_page_size - cache_start ) {
+            //printf("ssg_rank %d cache match regular block %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
+            /* We are not at the last block yet */
+            actual = cache_page_size - cache_start;
+            //printf("actual = %llu, cache_start = %llu, cache_size = %llu\n", (long long unsigned) actual, (long long unsigned) cache_start, (long long unsigned) cache_file_info->cache_page_size[0][cache_offset]);
+            if ( cache_file_info->io_type == BENVOLIO_CACHE_WRITE ) {
+                //Copy from cache buffer to user buffer.
+                memcpy(cache_file_info->cache_page_table[0][cache_offset].second + cache_start, local_buf, actual);
+                //Need to mark this cache block has been updated.
+                //cache_file_info->cache_update_list->insert(cache_offset);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+                #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+                t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
+                if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
+                    if (cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->find(cache_offset) != cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->end()) {
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] += actual;
+                    } else {
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
+                    }
+                } else {
+                    cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
+                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
+                }
+                #endif
+                ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+                #endif
+            } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ){
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual, (long long unsigned) cache_start);
+                memcpy(local_buf, cache_file_info->cache_page_table[0][cache_offset].second + cache_start, actual);
+            }
+
+            remaining_file_size -= actual;
+            cache_start = 0;
+            local_buf += actual;
+        } else {
+            //In some scenarios, the cache_start can beyond the cache page (bounded by the real file size), which leads to undefined behavior for read. For write, this should never happen because we should have reserved enough page size for this request.
+            /* Last block, we may need to write a partial page. */
+            if ( cache_file_info->io_type == BENVOLIO_CACHE_WRITE ) {
+                // Copy from buffer to cache.
+                memcpy(cache_file_info->cache_page_table[0][cache_offset].second + cache_start, local_buf, remaining_file_size);
+                //Need to mark this cache block has been updated.
+                //cache_file_info->cache_update_list->insert(cache_offset);
+
+                // Log updates in the time interval.
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+                #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
+                t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
+                if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
+                    if (cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->find(cache_offset) != cache_file_info->cache_counter_table[0][t_index]->cache_page_usage->end()) {
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] += remaining_file_size;
+                    } else {
+                        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = remaining_file_size;
+                    }
+                } else {
+                    cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
+                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
+                    cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = remaining_file_size;
+                }
+                #endif
+                ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+                #endif
+
+                remaining_file_size = 0;
+            } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ && cache_start < cache_page_size){
+                //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
+                actual = MIN(cache_page_size - cache_start, remaining_file_size);
+                memcpy(local_buf, cache_file_info->cache_page_table[0][cache_offset].second + cache_start, actual);
+                remaining_file_size -= actual;
+            }
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+            cache_file_info->cache_stat->memcpy_time += ABT_get_wtime() - time;
+            ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+            #endif
+            break;
+        }
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+        cache_file_info->cache_stat->memcpy_time += ABT_get_wtime() - time;
+        ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+        #endif
+    }
+    #if BENVOLIO_CACHE_STATISTICS == 1
+    time = ABT_get_wtime();
+    ABT_mutex_lock(cache_file_info->thread_mutex[0]);
+    cache_file_info->cache_stat->cache_fetch_match_time += time - total_time2;
+    cache_file_info->cache_stat->cache_total_time += time - total_time;
+    ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
+    #endif
+    return file_size - remaining_file_size;
+/*
+    cache_fetch(cache_file_info, file_start, file_size, cache_file_info->stripe_size, cache_file_info->stripe_count);
+    return cache_match(local_buf, cache_file_info, file_start, file_size, cache_file_info->stripe_size, cache_file_info->stripe_count);
+*/
+}
 
 #if BENVOLIO_CACHE_STATISTICS == 1
 static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size, double total_time) {
@@ -911,26 +1521,28 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         std::vector<off_t>::iterator it = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
         if (it == cache_file_info->cache_offset_list->end()) {
             // New page and insufficient budget, we proceed to remove least recent use page.
-            if (cache_file_info->cache_offset_list->size() >= cache_file_info->cache_block_reserved) {
-                //printf("ssg_rank %d flush triggered!\n",cache_file_info->ssg_rank);
 
+            if (cache_file_info->cache_offset_list->size() >= cache_file_info->cache_block_reserved) {
+                //printf("ssg_rank %d flush triggered! current pages = %ld, reserved space = %llu\n",cache_file_info->ssg_rank, cache_file_info->cache_offset_list->size(), (long long unsigned) cache_file_info->cache_block_reserved);
                 std::vector<off_t> flush_offsets;
-                std::vector<off_t>::iterator it2, it3;
-                it2 = cache_file_info->cache_offset_list->begin();
+                std::vector<off_t>::iterator it2 = cache_file_info->cache_offset_list->begin();
                 while (it2 != cache_file_info->cache_offset_list->end()) {
-                    it3 = it2 + 1;
                     flush_offset = *it2;
-                    flush_offsets.push_back(flush_offset);
-                    cache_file_info->cache_offset_list->erase(it2);
-                    if (flush_offsets.size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
-                        break;
+                    if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
+                        flush_offsets.push_back(flush_offset);
+                        //it2 = cache_file_info->cache_offset_list->erase(it2);
+                        if (flush_offsets.size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
+                            break;
+                        }
                     }
-                    it2 = it3;                   
+                    ++it2;
                 }
                 //printf("ssg_rank = %d flush offset size = %ld\n", cache_file_info->ssg_rank, flush_offsets.size());
-                cache_flush_array(cache_file_info, &flush_offsets);
-
+                if (flush_offsets.size()) {
+                    cache_flush_array(cache_file_info, &flush_offsets);
+                }
             }
+
         } else {
             // Old page? move it to the back of the list.
             cache_file_info->cache_offset_list->erase(it);
@@ -951,7 +1563,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             }
             cache_file_info->cache_counter_table[0][t_index]->cache_page_fetch_count++;
             #endif
-
             #endif
             /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
             cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
@@ -960,6 +1571,15 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+
+            if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
+                //Register cache page lock
+                cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
+                cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+                //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
+            }
+
             // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
 
             if (cache_file_info->io_type == BENVOLIO_CACHE_READ || ( (i == subblock_index && cache_offset < file_start) || file_start + file_size < cache_offset + cache_size2 ) ) {
@@ -994,7 +1614,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             //printf("ssg_rank %d Write old cache_offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset );
             // Time interval counter initialization
             #if BENVOLIO_CACHE_STATISTICS == 1
-
             #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
             t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
             if (cache_file_info->cache_counter_table->find(t_index) == cache_file_info->cache_counter_table->end() ) {
@@ -1019,7 +1638,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             //printf("ssg_rank %d Read old cache_offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset );
             // Time interval counter initialization
             #if BENVOLIO_CACHE_STATISTICS == 1
-
             #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
             t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
             if (cache_file_info->cache_counter_table->find(t_index) == cache_file_info->cache_counter_table->end() ) {
@@ -1056,7 +1674,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 //Need to mark this cache block has been updated.
                 cache_file_info->cache_update_list->insert(cache_offset);
                 #if BENVOLIO_CACHE_STATISTICS == 1
-
                 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
                 t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
                 if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
@@ -1071,7 +1688,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                     cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = actual;
                 }
                 #endif
-
                 #endif
             } else if (cache_file_info->io_type == BENVOLIO_CACHE_READ){
                 //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying contiguous %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) actual, (long long unsigned) cache_start);
@@ -1096,7 +1712,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 
                 // Log updates in the time interval.
                 #if BENVOLIO_CACHE_STATISTICS == 1
-
                 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
                 t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
                 if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
@@ -1111,7 +1726,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                     cache_file_info->cache_counter_table[0][t_index]->cache_page_usage[0][cache_offset] = remaining_file_size;
                 }
                 #endif
-
                 #endif
 
                 remaining_file_size = 0;
@@ -1246,6 +1860,15 @@ struct io_args {
 
 };
 
+void reset_args(struct io_args *args) {
+    args->done=0;
+    args->file_idx=0;
+    args->fileblk_cursor=0;
+    //args->client_cursor=0;
+    args->xfered=0;
+    args->ults_active=0;
+}
+
 /* file_starts: [in] list of starting offsets in file
  * file_sizes: [in] list of blocksizes in file
  * file_idx:  [in]  where to start processing file description list
@@ -1293,6 +1916,7 @@ static size_t calc_offsets(const std::vector<off_t> & file_starts,
 
     return xfered;
 }
+
 static void write_ult(void *_args)
 {
     int turn_out_the_lights = 0;  /* only set if we determine all threads are done */
@@ -1306,8 +1930,17 @@ static void write_ult(void *_args)
     size_t fileblk_cursor;
     double mutex_time;
 
-    while (args->client_cursor < args->total_io_amount && file_idx < args->file_starts.size() )
+    #if BENVOLIO_CACHE_ENABLE == 1
+    const std::vector<off_t> file_starts = *(args->cache_file_info->file_starts);
+    const std::vector<uint64_t> file_sizes = *(args->cache_file_info->file_sizes);
+    #else
+    const std::vector<off_t> file_starts = args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    #endif
+
+    while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
     {
+        //printf("entered loop with client_cursor = %ld, total_io_amount == %ld, file_idx = %ld, file_starts.size() = %ld\n", args->client_cursor, args->total_io_amount, file_idx, file_starts.size());
         void *local_buffer;
         size_t local_bufsize;
         size_t buf_cursor=0;
@@ -1348,13 +1981,16 @@ static void write_ult(void *_args)
          * state and drop the lock */
         unsigned int new_file_idx;
         size_t new_file_cursor;
-        client_xfer = calc_offsets(args->file_starts, args->file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
+        client_xfer = calc_offsets(file_starts, file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
                 &new_file_idx, &new_file_cursor);
 
         /* this seems wrong... we check the 'args' struct at top of loop, but
          * also update it inside the loop.  So for whatever reason the loop
          * thought we had more work to do but then it turns out we did not */
         if (client_xfer == 0)  {
+            //printf("file idx = %ld, fileblk_cursor = %ld, local_buf_size = %ld\n", args->file_idx, args->fileblk_cursor, local_bufsize);
+            //sleep(1);
+            //file_idx = new_file_idx;
             ABT_mutex_unlock(args->mutex);
             margo_bulk_pool_release(args->mr_pool, local_bulk);
             continue;
@@ -1363,7 +1999,6 @@ static void write_ult(void *_args)
         args->file_idx = new_file_idx;
         args->fileblk_cursor = new_file_cursor;
         args->client_cursor += client_xfer;
-
 
         // --------------------- args->mutex released ----------------//
         ABT_mutex_unlock(args->mutex);
@@ -1403,28 +2038,30 @@ static void write_ult(void *_args)
         std::list<ssize_t> rets;
         #endif
         io_time = ABT_get_wtime();
-        while (file_idx < args->file_starts.size() && issued < local_bufsize) {
+        while (file_idx < file_starts.size() && issued < local_bufsize) {
             // we might be able to only write a partial block
             //rets.push_back(-1);
-            nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
+            nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
 
             #if BENVOLIO_CACHE_ENABLE == 1
 
             #if BENVOLIO_CACHE_STATISTICS == 1
-            file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
             #else
-            file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
-            #endif            
+            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            //file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            #endif
 
             #else
-            abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
+            abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
             ops.push_back(write_op);
             #endif
+
             issued += nbytes;
             
             write_count++;
 
-            if (nbytes + fileblk_cursor >= args->file_sizes[file_idx]) {
+            if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                 file_idx++;
                 fileblk_cursor = 0;
             }
@@ -1490,7 +2127,15 @@ static void read_ult(void *_args)
     unsigned int file_idx=0;
     size_t fileblk_cursor;
 
-    while (args->client_cursor < args->total_io_amount && file_idx < args->file_starts.size() )
+    #if BENVOLIO_CACHE_ENABLE == 1
+    const std::vector<off_t> file_starts = *(args->cache_file_info->file_starts);
+    const std::vector<uint64_t> file_sizes = *(args->cache_file_info->file_sizes);
+    #else
+    const std::vector<off_t> file_starts = args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    #endif
+
+    while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
     {
         void *local_buffer;
         size_t local_bufsize;
@@ -1526,7 +2171,7 @@ static void read_ult(void *_args)
 
         /* figure out what we would have done so we can update shared 'arg'
          * state and drop the lock */
-        client_xfer = calc_offsets(args->file_starts, args->file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
+        client_xfer = calc_offsets(file_starts, file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
                 &new_file_idx, &new_file_cursor);
 
         if (client_xfer == 0)  {
@@ -1544,31 +2189,33 @@ static void read_ult(void *_args)
         fileblk_cursor = first_file_cursor;
 
         // see write_ult for more discussion of when we stop processing
-        while (file_idx < args->file_starts.size() && file_xfer < local_bufsize) {
+        while (file_idx < file_starts.size() && file_xfer < local_bufsize) {
 
             // we might be able to only write a partial block
             // 'local_bufsize' here instead of 'client_xfer' because we are
             // filling the local memory buffer first and then doing the rma put
-            nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, local_bufsize-buf_cursor);
+            nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, local_bufsize-buf_cursor);
 
             io_time = ABT_get_wtime();
             #if BENVOLIO_CACHE_ENABLE == 1
 
             #if BENVOLIO_CACHE_STATISTICS == 1
-            temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            temp = cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            //temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
             #else
-            temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, args->file_starts[file_idx]+fileblk_cursor, nbytes);
+            //temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            temp = cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             #endif
 
             file_xfer += temp;
             #else
-            file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor);
+            file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor);
             #endif
             io_time = ABT_get_wtime()-io_time;
             total_io_time += io_time;
             read_count++;
 
-            if (nbytes + fileblk_cursor >= args->file_sizes[file_idx]) {
+            if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                 file_idx++;
                 fileblk_cursor = 0;
             }
@@ -1682,12 +2329,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return fd;
     }
 
+
     /* write:
      * - bulk-get into a contig buffer
      * - write out to file */
     ssize_t process_write(const tl::request& req, tl::bulk &client_bulk, const std::string &file,
             const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
     {
+        unsigned i;
 	struct io_stats local_stats;
         double write_time = ABT_get_wtime();
 
@@ -1716,7 +2365,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
 
         size_t total_io_amount = 0;
-        for ( unsigned i = 0; i < file_sizes.size(); ++i ) {
+        for ( i = 0; i < file_sizes.size(); ++i ) {
             total_io_amount += file_sizes[i];
         }
         if ( total_io_amount > client_bulk.size() ) {
@@ -1733,7 +2382,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.stripe_size = stripe_size;
         cache_file_info.stripe_count = stripe_count;
         cache_file_info.ssg_rank = ssg_rank;
-
         /*This is a very basic estimation of file size at local providers. Most likely we are making overestimation*/
 /*
         off_t min_off=file_starts[0], max_off = 0;
@@ -1750,30 +2398,114 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 */
         cache_request_counter(cache_info, file_sizes);
         cache_register_lock(cache_info, file ,&cache_file_info);
+
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info, total_io_amount);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.thread_mutex = &(args.mutex);
+        #endif
+
         #else
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, total_io_amount);
         #endif
-        ABT_mutex_create(&args.mutex);
-        ABT_eventual_create(0, &args.eventual);
 
         // ceiling division: we'll spawn threads to operate on the registered memory.
         // (intermediate) buffer.  If we run out of
         // file description, threads will bail out early
 
         //size_t ntimes = 1 + (client_bulk.size() -1)/xfersize;
+        #if BENVOLIO_CACHE_ENABLE == 1
+        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<off_t>*> *file_starts_array;
+        std::vector<off_t> *pages;
+        cache_page_register(&cache_file_info, file_starts, file_sizes, &file_starts_array, &file_sizes_array, &pages);
+
+        if (cache_file_info.cache_evictions) {
+            // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
+            cache_file_info.file_starts = new std::vector<off_t>;
+            cache_file_info.file_sizes = new std::vector<uint64_t>;
+
+            //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
+            total_io_amount = 0;
+            int page_index = 0, previous = 0;
+            while (page_index < pages->size()) {
+                ABT_mutex_create(&args.mutex);
+                ABT_eventual_create(0, &args.eventual);
+                reset_args(&args);
+                // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
+                page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
+                for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
+                    total_io_amount += cache_file_info.file_sizes[0][j];
+                }
+                args.total_io_amount = total_io_amount;
+                //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
+                size_t ntimes = 1 + (total_io_amount - 1)/xfersize;
+                //ntimes = 1;
+                args.ults_active=ntimes;
+                //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
+                for (unsigned int j = 0; j< ntimes; j++) {
+                    ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+                }
+                ABT_eventual_wait(args.eventual, NULL);
+                ABT_eventual_free(&args.eventual);
+
+                cache_page_deregister2(&cache_file_info, pages, previous, page_index);
+                previous = page_index;
+            }
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+            std::vector<std::vector<uint64_t>*>::iterator it;
+            std::vector<std::vector<off_t>*>::iterator it2;
+            for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
+                delete *it;
+            }
+            for (it2 = file_starts_array->begin(); it2 != file_starts_array->end(); ++it2){
+                delete *it2;
+            }
+            delete pages;
+            delete file_sizes_array;
+            delete file_starts_array;
+
+        } else {
+            cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
+            cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
+            for ( i = 0; i < file_starts.size(); ++i ) {
+                cache_file_info.file_starts[0][i] = file_starts[i];
+                cache_file_info.file_sizes[0][i] = file_sizes[i];
+            }
+
+            ABT_mutex_create(&args.mutex);
+            ABT_eventual_create(0, &args.eventual);
+
+            size_t ntimes = 1 + (total_io_amount -1)/xfersize;
+            args.ults_active=ntimes;
+            for (unsigned int i = 0; i< ntimes; i++) {
+                ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+            }
+            ABT_eventual_wait(args.eventual, NULL);
+            ABT_eventual_free(&args.eventual);
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+
+        }
+        cache_page_deregister(&cache_file_info);
+        cache_deregister_lock(cache_info, file, &cache_file_info);
+
+        #else
+        ABT_mutex_create(&args.mutex);
+        ABT_eventual_create(0, &args.eventual);
+
         size_t ntimes = 1 + (total_io_amount -1)/xfersize;
         args.ults_active=ntimes;
         for (unsigned int i = 0; i< ntimes; i++) {
             ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
         }
         ABT_eventual_wait(args.eventual, NULL);
-
         ABT_eventual_free(&args.eventual);
-        #if BENVOLIO_CACHE_ENABLE == 1
-        cache_deregister_lock(cache_info, file);
         #endif
         local_stats.write_response = ABT_get_wtime();
+        //printf("responded with value %llu\n", (long long unsigned)args.client_cursor);
         req.respond(args.client_cursor);
         local_stats.write_response = ABT_get_wtime() - local_stats.write_response;
 
@@ -1797,6 +2529,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     ssize_t process_read(const tl::request &req, tl::bulk &client_bulk, const std::string &file,
             std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
     {
+        unsigned i;
 	struct io_stats local_stats;
         double read_time = ABT_get_wtime();
 
@@ -1851,6 +2584,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_register_lock(cache_info, file ,&cache_file_info);
 
         /* Simple detection for file offsets within currernt provider's file domain*/
+/*
         unsigned i;
         for ( i = 0; i < file_starts.size(); ++i ) {
             if ( file_starts[i] + file_sizes[i] + 1 > cache_file_info.file_size ) {
@@ -1870,28 +2604,112 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 printf("provider rank is %d, file_start contains %llu, file_end contains %llu\n", ssg_rank, (long long unsigned) start_stripe, end_stripe);
             }
         }
+*/
         //printf("reading a file with size %llu\n", (long long unsigned) cache_file_info.file_size);
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info, total_io_amount);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.thread_mutex = &(args.mutex);
+        #endif
         #else
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, total_io_amount);
         #endif
-        ABT_mutex_create(&args.mutex);
-        ABT_eventual_create(0, &args.eventual);
 
         // ceiling division.  Will bail out early if we exhaust file description
         //size_t ntimes = 1 + (client_bulk.size() - 1)/bufsize;
-        size_t ntimes = 1 + (total_io_amount - 1)/bufsize;
+        #if BENVOLIO_CACHE_ENABLE == 1
+        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<off_t>*> *file_starts_array;
+        std::vector<off_t> *pages;
+        cache_page_register(&cache_file_info, file_starts, file_sizes, &file_starts_array, &file_sizes_array, &pages);
 
-        args.ults_active = ntimes;
+        if (cache_file_info.cache_evictions) {
+            // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
+            cache_file_info.file_starts = new std::vector<off_t>;
+            cache_file_info.file_sizes = new std::vector<uint64_t>;
+
+            //printf("process read total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
+            total_io_amount = 0;
+            int page_index = 0, previous = 0;
+            while (page_index < pages->size()) {
+                ABT_mutex_create(&args.mutex);
+                ABT_eventual_create(0, &args.eventual);
+                reset_args(&args);
+                // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
+                page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
+
+                for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
+                    total_io_amount += cache_file_info.file_sizes[0][j];
+                }
+                args.total_io_amount = total_io_amount;
+                //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
+                size_t ntimes = 1 + (total_io_amount - 1)/bufsize;
+                ntimes = 1;
+                args.ults_active=ntimes;
+                //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
+                for (unsigned int j = 0; j< ntimes; j++) {
+                    ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+                }
+                ABT_eventual_wait(args.eventual, NULL);
+                ABT_eventual_free(&args.eventual);
+
+                cache_page_deregister2(&cache_file_info, pages, previous, page_index);
+                previous = page_index;
+            }
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+            std::vector<std::vector<uint64_t>*>::iterator it;
+            std::vector<std::vector<off_t>*>::iterator it2;
+            for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
+                delete *it;
+            }
+            for (it2 = file_starts_array->begin(); it2 != file_starts_array->end(); ++it2){
+                delete *it2;
+            }
+            delete pages;
+            delete file_sizes_array;
+            delete file_starts_array;
+
+        } else {
+            cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
+            cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
+            for ( i = 0; i < file_starts.size(); ++i ) {
+                cache_file_info.file_starts[0][i] = file_starts[i];
+                cache_file_info.file_sizes[0][i] = file_sizes[i];
+            }
+
+            ABT_mutex_create(&args.mutex);
+            ABT_eventual_create(0, &args.eventual);
+
+            size_t ntimes = 1 + (total_io_amount -1)/bufsize;
+            args.ults_active=ntimes;
+            for (unsigned int i = 0; i< ntimes; i++) {
+                ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+            }
+            ABT_eventual_wait(args.eventual, NULL);
+            ABT_eventual_free(&args.eventual);
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+
+        }
+        cache_page_deregister(&cache_file_info);
+        cache_deregister_lock(cache_info, file, &cache_file_info);
+
+        #else
+        ABT_mutex_create(&args.mutex);
+        ABT_eventual_create(0, &args.eventual);
+
+        size_t ntimes = 1 + (total_io_amount -1)/bufsize;
+        args.ults_active=ntimes;
         for (unsigned int i = 0; i< ntimes; i++) {
             ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
         }
         ABT_eventual_wait(args.eventual, NULL);
         ABT_eventual_free(&args.eventual);
-        #if BENVOLIO_CACHE_ENABLE == 1
-        cache_deregister_lock(cache_info, file);
         #endif
         local_stats.read_response = ABT_get_wtime();
+        //printf("read return value = %ld\n", args.client_cursor);
         req.respond(args.client_cursor);
         local_stats.read_response = ABT_get_wtime() - local_stats.read_response;
 
@@ -1957,7 +2775,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.abt_id = abt_id;
         cache_register_lock(cache_info, file ,&cache_file_info);
         cache_write_back_lock(&cache_file_info);
-        cache_deregister_lock(cache_info, file);
+        cache_deregister_lock(cache_info, file, &cache_file_info);
         cache_remove_file_lock(cache_info, file);
         #endif
         //printf("provider %d finished flushing\n",ssg_rank);
