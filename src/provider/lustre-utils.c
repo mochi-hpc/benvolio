@@ -38,7 +38,7 @@ int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *strip
         *stripe_size = atoi(p);
     } else {
         //*stripe_size = 16777216;
-        *stripe_size = 262144;
+        *stripe_size = 16777216;
     }
     *stripe_count = 156;
 
