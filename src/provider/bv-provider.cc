@@ -547,7 +547,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
     }
     off_t flush_offset;
-    std::vector<off_t> flush_offsets;
+    std::vector<off_t> *flush_offsets = new std::vector<off_t>;
     std::vector<off_t>::iterator it2;
     // Entering this condition means that we are out of memory budget, we need to try to remove pages that are not currently used by anyone.
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
@@ -558,7 +558,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
             if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
-                flush_offsets.push_back(flush_offset);
+                flush_offsets->push_back(flush_offset);
                 counter++;
                 if ( counter == remove_counter ) {
                     break;
@@ -566,11 +566,11 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             }
             ++it2;
         }
-        if (flush_offsets.size()) {
-            cache_flush_array(cache_file_info, &flush_offsets);
+        if (flush_offsets->size()) {
+            cache_flush_array(cache_file_info, flush_offsets);
         }
     }
-
+    delete flush_offsets;
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
         cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
@@ -614,7 +614,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     //std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     std::vector<off_t>* file_starts_new;
     std::vector<uint64_t>* file_sizes_new;
-    std::set<off_t> pages;
+    std::set<off_t> *pages = new std::set<off_t>;
     off_t cache_offset;
     size_t i, j, last_request_index;
     uint64_t cache_size, cache_size2;
@@ -628,17 +628,17 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
 
     /* Figure out how many pages we are touching*/
     for ( i = 0; i < file_starts.size(); ++i ) {
-        cache_count_request_pages(cache_file_info, file_starts[i], file_sizes[i], &pages);
+        cache_count_request_pages(cache_file_info, file_starts[i], file_sizes[i], pages);
     }
     //printf("total number of pages = %ld, page reserved = %ld\n", pages.size(), cache_file_info->cache_block_reserved);
 
-    file_starts_array[0] = new std::vector<std::vector<off_t>*>(pages.size());
-    file_sizes_array[0] = new std::vector<std::vector<uint64_t>*>(pages.size());
-    pages_vec[0] = new std::vector<off_t>(pages.size());
+    file_starts_array[0] = new std::vector<std::vector<off_t>*>(pages->size());
+    file_sizes_array[0] = new std::vector<std::vector<uint64_t>*>(pages->size());
+    pages_vec[0] = new std::vector<off_t>(pages->size());
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
-    for ( it = pages.begin(); it != pages.end(); ++it ) {
+    for ( it = pages->begin(); it != pages->end(); ++it ) {
         file_starts_new = new std::vector<off_t>;
         file_sizes_new = new std::vector<uint64_t>;
         file_starts_array[0][0][j] = file_starts_new;
@@ -679,6 +679,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
             }
         }
     }
+    delete pages;
 }
 
 static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
@@ -1204,13 +1205,14 @@ static void cache_count_request_extra_pages(Cache_file_info *cache_file_info, of
 }
 
 static size_t cache_count_requests_pages(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes) {
-    std::set<off_t> pages;
+    std::set<off_t>* pages = new std::set<off_t>;
     size_t i;
     for ( i = 0; i < file_starts.size(); ++i ) {
-        cache_count_request_extra_pages(cache_file_info, file_starts[i], file_sizes[i], &pages);
+        cache_count_request_extra_pages(cache_file_info, file_starts[i], file_sizes[i], pages);
     }
-
-    return pages.size();
+    size_t result = pages->size();
+    delete pages;
+    return result;
 }
 
 /**
@@ -1524,6 +1526,8 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 
     //printf("cache fetch subblocks_index = %llu, cache_blocks = %llu\n", (long long unsigned) subblock_index, (long long unsigned) cache_blocks );
     //printf("ssg_rank %d file_start=%llu, file size=%llu, cache_start = %llu\n",cache_file_info->ssg_rank, file_start, file_size, (long long unsigned) cache_start);
+    std::vector<off_t> *flush_offsets = NULL;
+
     for ( i = subblock_index; i < cache_blocks; ++i ) {
         cache_offset = block_index * stripe_size * stripe_count + my_provider * stripe_size + i * cache_size;
         /* Sometimes the beginning of a cache block can go beyond the file range. For read, we can just terminate the caching process.*/
@@ -1541,22 +1545,26 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
 
             if (cache_file_info->cache_offset_list->size() >= cache_file_info->cache_block_reserved) {
                 //printf("ssg_rank %d flush triggered! current pages = %ld, reserved space = %llu\n",cache_file_info->ssg_rank, cache_file_info->cache_offset_list->size(), (long long unsigned) cache_file_info->cache_block_reserved);
-                std::vector<off_t> flush_offsets;
+                if ( flush_offsets == NULL ) {
+                    flush_offsets = new std::vector<off_t>;
+                } else {
+                    flush_offsets->clear();
+                }
                 std::vector<off_t>::iterator it2 = cache_file_info->cache_offset_list->begin();
                 while (it2 != cache_file_info->cache_offset_list->end()) {
                     flush_offset = *it2;
                     if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
-                        flush_offsets.push_back(flush_offset);
+                        flush_offsets->push_back(flush_offset);
                         //it2 = cache_file_info->cache_offset_list->erase(it2);
-                        if (flush_offsets.size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
+                        if (flush_offsets->size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
                             break;
                         }
                     }
                     ++it2;
                 }
                 //printf("ssg_rank = %d flush offset size = %ld\n", cache_file_info->ssg_rank, flush_offsets.size());
-                if (flush_offsets.size()) {
-                    cache_flush_array(cache_file_info, &flush_offsets);
+                if (flush_offsets->size()) {
+                    cache_flush_array(cache_file_info, flush_offsets);
                 }
             }
 
@@ -1760,6 +1768,9 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info->cache_stat->memcpy_time += ABT_get_wtime() - time;
         #endif
+    }
+    if ( flush_offsets != NULL ) {
+        delete flush_offsets;
     }
     #if BENVOLIO_CACHE_STATISTICS == 1
     time = ABT_get_wtime();
