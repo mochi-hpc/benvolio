@@ -687,7 +687,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
     if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         cache_file_info->cache_evictions = 1;
-        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        //cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
         //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
@@ -2438,6 +2438,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
         if (cache_file_info.cache_evictions) {
             // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
+
             cache_file_info.file_starts = new std::vector<off_t>;
             cache_file_info.file_sizes = new std::vector<uint64_t>;
 
@@ -2460,12 +2461,12 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 //ntimes = 1;
                 args.ults_active=ntimes;
                 //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
-/*
+
                 for (unsigned int j = 0; j< ntimes; j++) {
                     ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
                 }
                 ABT_eventual_wait(args.eventual, NULL);
-*/
+
                 ABT_eventual_free(&args.eventual);
 
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
@@ -2474,6 +2475,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 #endif
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
+/*
             std::vector<std::vector<uint64_t>*>::iterator it;
             std::vector<std::vector<off_t>*>::iterator it2;
             for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -2485,7 +2487,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete pages;
             delete file_sizes_array;
             delete file_starts_array;
-
+*/
         } else {
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
@@ -2872,8 +2874,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
             printf("ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
