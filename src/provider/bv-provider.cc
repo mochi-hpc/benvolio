@@ -118,6 +118,8 @@ typedef struct {
     /* The order of cache blocks fetched. When we flush a block, it starts from the first element of the list*/
     std::vector<off_t>* cache_offset_list;
     std::map<off_t, std::pair<int, tl::mutex*>*> *cache_page_mutex_table;
+    tl::mutex *cache_mutex;
+    /* The rest of variables does not require a lock for their accesses*/
     int cache_evictions;
     #if BENVOLIO_CACHE_STATISTICS == 1
     Cache_stat *cache_stat;
@@ -131,7 +133,6 @@ typedef struct {
     std::vector<off_t> *file_starts;
 
     double *init_timestamp;
-    tl::mutex *cache_mutex;
     /* Read or write operation?*/
     int io_type;
     /* How many cache blocks? */
@@ -387,7 +388,6 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     delete cache_info->cache_stat_table[0][file];
     cache_info->cache_stat_table->erase(file);
     #endif
-
     //printf("ssg_rank %d -------------------------removing cache for file %s\n", cache_info->ssg_rank, file.c_str());
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
@@ -395,13 +395,25 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
         free(it2->second->second);
         delete it2->second;
     }
+    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_file_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
+    std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
+    for (it11 = cache_file_page_mutex_table->begin(); it11 != cache_file_page_mutex_table->end(); ++it11) {
+        if (it11->second->first) {
+            printf("critical error detected !!!!!!!!!\n");
+        }
+        delete it11->second->second;
+        delete it11->second;
+    }
+
     delete cache_file_table;
     delete cache_info->cache_update_table[0][file];
     delete cache_info->cache_mutex_table[0][file];
+    delete cache_file_page_mutex_table;
     delete cache_info->cache_offset_list_table[0][file];
 
     cache_info->cache_table->erase(file);
     cache_info->cache_mutex_table->erase(file);
+    cache_info->cache_page_mutex_table->erase(file);
     cache_info->cache_update_table->erase(file);
     cache_info->cache_offset_list_table->erase(file);
     cache_info->cache_block_used[0] -= cache_info->cache_block_reserve_table[0][file];
@@ -956,6 +968,9 @@ static void cache_finalize(Cache_info *cache_info) {
     for (it10 = cache_info->cache_page_mutex_table->begin(); it10 != cache_info->cache_page_mutex_table->end(); ++it10) {
         std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
         for (it11 = it10->second->begin(); it11 != it10->second->end(); ++it11) {
+            if (it11->second->first) {
+                printf("critical error detected !!!!!!!!!\n");
+            }
             delete it11->second->second;
             delete it11->second;
         }
@@ -2050,9 +2065,9 @@ static void write_ult(void *_args)
             #if BENVOLIO_CACHE_ENABLE == 1
 
             #if BENVOLIO_CACHE_STATISTICS == 1
-            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            //file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
             #else
-            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            //file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             //file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             #endif
 
@@ -2857,6 +2872,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
             printf("ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
