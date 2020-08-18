@@ -604,7 +604,7 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, std::vector
     unsigned i;
     std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
     for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
-        cache_file_info->cache_page_mutex_table[0][it3->first]->first++;
+        cache_file_info->cache_page_mutex_table[0][it3->first]->first--;
     }
     cache_file_info->cache_page_table->clear();
 }
