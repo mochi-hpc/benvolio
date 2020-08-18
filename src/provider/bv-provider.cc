@@ -2456,7 +2456,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
             int page_index = 0, previous = 0;
-
+#if 1==2
             while (page_index < pages->size()) {
 /*
                 ABT_mutex_create(&args.mutex);
@@ -2486,7 +2486,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
             }
-
+#endif
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
 
