@@ -30,10 +30,10 @@
 #include "lustre-utils.h"
 
 #define BENVOLIO_CACHE_ENABLE 1
-#define BENVOLIO_CACHE_MAX_N_BLOCKS 512
-#define BENVOLIO_CAHCE_MIN_N_BLOCKS 512
+//#define BENVOLIO_CACHE_MAX_N_BLOCKS 32
+//#define BENVOLIO_CAHCE_MIN_N_BLOCKS 32
 #define BENVOLIO_CACHE_MAX_FILE 5
-#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
+//#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 16777216
 //#define BENVOLIO_CACHE_MAX_BLOCK_SIZE 355
 #define BENVOLIO_CACHE_WRITE 1
 #define BENVOLIO_CACHE_READ 0
@@ -45,6 +45,9 @@
 
 
 namespace tl = thallium;
+static int BENVOLIO_CACHE_MAX_N_BLOCKS;
+static int BENVOLIO_CAHCE_MIN_N_BLOCKS;
+static int BENVOLIO_CACHE_MAX_BLOCK_SIZE;
 
 #if BENVOLIO_CACHE_ENABLE == 1
 typedef struct {
@@ -1244,7 +1247,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
-
+            printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
             if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
                 //Register cache page lock
                 cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
@@ -2835,6 +2838,26 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rm_args.cache_info = cache_info;
             rm_args.abt_id = abt_id;
             rm_args.ssg_rank = ssg_rank;
+            char *p;
+            p = getenv("BENVOLIO_CACHE_MAX_N_BLOCKS");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MAX_N_BLOCKS"));
+            } else {
+                BENVOLIO_CACHE_MAX_N_BLOCKS = 32;
+            }
+            p = getenv("BENVOLIO_CAHCE_MIN_N_BLOCKS");
+            if ( p != NULL ) {
+                BENVOLIO_CAHCE_MIN_N_BLOCKS = atoi(getenv("BENVOLIO_CAHCE_MIN_N_BLOCKS"));
+            } else {
+                BENVOLIO_CAHCE_MIN_N_BLOCKS = 32;
+            }
+            p = getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
+            } else {
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
+            }
+            printf("ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CAHCE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
