@@ -2461,10 +2461,12 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 //ntimes = 1;
                 args.ults_active=ntimes;
                 //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
+/*
                 for (unsigned int j = 0; j< ntimes; j++) {
                     ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
                 }
                 ABT_eventual_wait(args.eventual, NULL);
+*/
                 ABT_eventual_free(&args.eventual);
 
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
