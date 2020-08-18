@@ -127,7 +127,6 @@ typedef struct {
     #endif
     #endif
     std::map<off_t, std::pair<uint64_t, char*>> *cache_page_table;
-    std::set<off_t> *page_used;
     std::vector<uint64_t> *file_sizes;
     std::vector<off_t> *file_starts;
 
@@ -576,6 +575,11 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
         page_index++;
     }
+    /* Remeber this cache_page_table is cleared inside cache_page_deregister2. Hence whatever is currently in cache_page_table should be what we are using in this register function. */
+    std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
+    for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
+        cache_file_info->cache_page_mutex_table[0][it3->first]->first++;
+    }
     return page_index;
 }
 
@@ -590,9 +594,9 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, std::vector
     for ( i = start; i < end; ++i  ) {
         cache_offset = *it;
         cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
-        cache_file_info->page_used->erase(cache_offset);
         it++;
     }
+    cache_file_info->cache_page_table->clear();
 }
 
 
@@ -670,17 +674,20 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
 static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     size_t pages = cache_count_requests_pages(cache_file_info, file_starts, file_sizes);
-    cache_file_info->page_used = new std::set<off_t>;
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
     if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         cache_file_info->cache_evictions = 1;
         cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
-        //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+        printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
-        //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+        printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
         cache_file_info->cache_evictions = 0;
         for ( size_t i = 0; i < file_starts.size(); ++i ) {
             cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
+        }
+        std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
+        for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
+            cache_file_info->cache_page_mutex_table[0][it->first]->first++;
         }
     }
 }
@@ -689,14 +696,13 @@ static void cache_page_deregister(Cache_file_info *cache_file_info) {
     if (!cache_file_info->cache_evictions) {
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
         off_t cache_offset;
-        std::set<off_t>::iterator it;
-        for ( it = cache_file_info->page_used->begin(); it != cache_file_info->page_used->end(); ++it ) {
-            cache_offset = *it;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
+        std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
+        for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
+            cache_file_info->cache_page_mutex_table[0][it->first]->first--;
         }
+
     }
     delete cache_file_info->cache_page_table;
-    delete cache_file_info->page_used;
 }
 
 /*
@@ -1287,12 +1293,6 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
                 cache_file_info->cache_table[0][cache_offset]->first = (((file_start + file_size - 1) % stripe_size) % cache_size) + 1;
             }
         }
-        // Page registered for lock free usage later in lower level. This page must not be evicted for any reasons until the count return to zero.
-        if ( cache_file_info->page_used->find(cache_offset) == cache_file_info->page_used->end() ) {
-            // Make sure the reference counter is only updated once by a single RPC
-            cache_file_info->page_used->insert(cache_offset);
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->first++;
-        }
         // Not in the previous condition because the cache size may change, we want the latest cache page size updated here.
         std::pair<uint64_t, char*> v;
         v.first = cache_file_info->cache_table[0][cache_offset]->first;
@@ -1351,7 +1351,6 @@ static size_t cache_fetch_match_lock_free(char* local_buf, Cache_file_info *cach
             //printf("ssg_rank = %d, cache offset %llu is beyond file size %llu\n", cache_file_info->ssg_rank, (long long unsigned )cache_offset, (long long unsigned) cache_file_info->file_size);
             break;
         }
-
         // It is impossible for this branch to have cache pages uninitialized at this point.
         cache_page_size = cache_file_info->cache_page_table[0][cache_offset].first;
         #if BENVOLIO_CACHE_STATISTICS == 1
@@ -1408,6 +1407,7 @@ static size_t cache_fetch_match_lock_free(char* local_buf, Cache_file_info *cach
             cache_start = 0;
             local_buf += actual;
         } else {
+            //printf("ssg_rank %d offset %llu size %llu, cache_offset = %llu copying remaining %llu number of bytes cache_start = %llu\n", cache_file_info->ssg_rank, (long long unsigned) file_start, (long long unsigned)file_size, cache_offset, (long long unsigned) remaining_file_size, (long long unsigned) cache_start);
             //In some scenarios, the cache_start can beyond the cache page (bounded by the real file size), which leads to undefined behavior for read. For write, this should never happen because we should have reserved enough page size for this request.
             /* Last block, we may need to write a partial page. */
             if ( cache_file_info->io_type == BENVOLIO_CACHE_WRITE ) {
@@ -1463,6 +1463,7 @@ static size_t cache_fetch_match_lock_free(char* local_buf, Cache_file_info *cach
     cache_file_info->cache_stat->cache_total_time += time - total_time;
     ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
     #endif
+
     return file_size - remaining_file_size;
 /*
     cache_fetch(cache_file_info, file_start, file_size, cache_file_info->stripe_size, cache_file_info->stripe_count);
