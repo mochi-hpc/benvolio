@@ -573,7 +573,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
 
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
-        //cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+        cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
         cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
         cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
     }
@@ -581,7 +581,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     // As long as we have budgets, we keep allocating as many pages as possible.
     while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
         for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
-            //cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+            cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
             cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
             cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
         }
@@ -602,11 +602,9 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, std::vector
     std::vector<off_t>::iterator it;
     off_t cache_offset;
     unsigned i;
-    it = pages->begin() + start;
-    for ( i = start; i < end; ++i  ) {
-        cache_offset = *it;
-        cache_file_info->cache_page_mutex_table[0][cache_offset]->first--;
-        it++;
+    std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
+    for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
+        cache_file_info->cache_page_mutex_table[0][it3->first]->first++;
     }
     cache_file_info->cache_page_table->clear();
 }
@@ -695,7 +693,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
         cache_file_info->cache_evictions = 0;
         for ( size_t i = 0; i < file_starts.size(); ++i ) {
-            //cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
+            cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
         }
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
@@ -2446,6 +2444,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
             int page_index = 0, previous = 0;
+#if 1==2
             while (page_index < pages->size()) {
                 ABT_mutex_create(&args.mutex);
                 ABT_eventual_create(0, &args.eventual);
@@ -2472,7 +2471,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
             }
-
+#endif
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
             std::vector<std::vector<uint64_t>*>::iterator it;
