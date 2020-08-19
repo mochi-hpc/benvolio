@@ -657,9 +657,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 //file_starts_new->push_back(file_starts[i]);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    if (file_sizes_new->size() == 0) {
-                        file_sizes_new->push_back(file_sizes[i]);
-                    }
+                     //file_sizes_new->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
