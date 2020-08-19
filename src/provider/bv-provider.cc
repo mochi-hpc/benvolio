@@ -540,7 +540,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     std::vector<off_t>::iterator it;
 
     // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
-/*
+
     remaining_pages = 0;
     for ( it = pages->begin() + page_index; it != pages->end(); ++it ) {
         if (cache_file_info->cache_table->find(*it) == cache_file_info->cache_table->end()) {
@@ -572,7 +572,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
     }
     delete flush_offsets;
-*/
+
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
         cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
@@ -690,7 +690,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
     if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         cache_file_info->cache_evictions = 1;
-        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        //cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
         //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
@@ -2489,9 +2489,10 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 previous = page_index;
             }
 */
+
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
-
+/*
             std::vector<std::vector<uint64_t>*>::iterator it;
             std::vector<std::vector<off_t>*>::iterator it2;
             for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -2503,7 +2504,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete pages;
             delete file_sizes_array;
             delete file_starts_array;
-
+*/
         } else {
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
