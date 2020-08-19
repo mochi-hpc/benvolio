@@ -657,12 +657,13 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 //file_starts_new->push_back(file_starts[i]);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    if (file_sizes_new->size() < 50){
+                    if (file_sizes_new->size() == 0) {
                         file_sizes_new->push_back(file_sizes[i]);
                     }
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
+                    printf("error branch 1\n");
                     file_sizes_new->push_back(cache_offset + cache_size2 - file_starts[i]);
                     //last_request_index = i;
                     //break;
@@ -673,9 +674,11 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     // The end of current request tail fall into this page, we are done here.
                     file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
+                    printf("error branch 2\n");
                     //last_request_index = i;
                 } else {
                     file_sizes_new->push_back(cache_size2);
+                    printf("error branch 3\n");
                 }
             } else {
                 // This request is after this page, we leave.
