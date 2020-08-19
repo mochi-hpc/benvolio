@@ -540,7 +540,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     std::vector<off_t>::iterator it;
 
     // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
-/*
+
     remaining_pages = 0;
     for ( it = pages->begin() + page_index; it != pages->end(); ++it ) {
         if (cache_file_info->cache_table->find(*it) == cache_file_info->cache_table->end()) {
@@ -572,19 +572,16 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
     }
     delete flush_offsets;
-*/
+
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
-/*
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
         cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
         cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
         cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
     }
     page_index++;
-*/
     // As long as we have budgets, we keep allocating as many pages as possible.
-    //while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
-    while (page_index < pages->size()) {
+    while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
         for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
             cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
             cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
@@ -1081,7 +1078,7 @@ static void cache_flush(Cache_file_info *cache_file_info, off_t cache_offset) {
 static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_t> *cache_offsets) {
     std::vector<off_t>::iterator it;
     off_t cache_offset;
-    std::vector<abt_io_op_t*> write_ops;
+    std::vector<abt_io_op_t*> *write_ops = new std::vector<abt_io_op_t*>;
     abt_io_op_t * write_op;
     std::vector<abt_io_op_t*>::iterator it2;
     #if BENVOLIO_CACHE_STATISTICS == 1
@@ -1108,11 +1105,11 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
             //write-back when the cache page is dirty. Maybe we can try to prioritize pages untouched or almost finished?
             ssize_t ret;
             write_op = abt_io_pwrite_nb(cache_file_info->abt_id, cache_file_info->fd, cache_file_info->cache_table[0][cache_offset]->second, cache_file_info->cache_table[0][cache_offset]->first, cache_offset, &ret );
-            write_ops.push_back(write_op);
+            write_ops->push_back(write_op);
         }
     }
-    if (write_ops.size() ) {
-        it2 = write_ops.begin();
+    if (write_ops->size() ) {
+        it2 = write_ops->begin();
     }
     for ( it = cache_offsets->begin(); it != cache_offsets->end(); ++it ) {
         cache_offset = *it;
@@ -1132,7 +1129,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
         cache_file_info->cache_offset_list->erase(it3);
 
     }
-
+    delete write_ops;
 
     #if BENVOLIO_CACHE_STATISTICS == 1
     cache_file_info->cache_stat->flush_time += ABT_get_wtime() - time;
