@@ -637,6 +637,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     file_starts_array[0] = new std::vector<std::vector<off_t>*>(pages->size());
     file_sizes_array[0] = new std::vector<std::vector<uint64_t>*>(pages->size());
     pages_vec[0] = new std::vector<off_t>(pages->size());
+#if 1==0
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
@@ -681,6 +682,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
             }
         }
     }
+#endif
     delete pages;
 }
 
@@ -690,7 +692,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
     if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         cache_file_info->cache_evictions = 1;
-        //cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
         //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
@@ -2492,7 +2494,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
-/*
+
             std::vector<std::vector<uint64_t>*>::iterator it;
             std::vector<std::vector<off_t>*>::iterator it2;
             for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -2504,7 +2506,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete pages;
             delete file_sizes_array;
             delete file_starts_array;
-*/
+
         } else {
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
