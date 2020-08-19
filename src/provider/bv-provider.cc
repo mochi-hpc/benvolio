@@ -2458,13 +2458,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
             int page_index = 0, previous = 0;
-
-            while (page_index < pages->size()) {
 /*
+            while (page_index < pages->size()) {
+
                 ABT_mutex_create(&args.mutex);
                 ABT_eventual_create(0, &args.eventual);
                 reset_args(&args);
-*/
+
                 // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
                 page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
                 for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
@@ -2474,7 +2474,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
                 size_t ntimes = 1 + (total_io_amount - 1)/xfersize;
                 //ntimes = 1;
-/*
+
                 args.ults_active=ntimes;
                 //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
 
@@ -2484,11 +2484,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 ABT_eventual_wait(args.eventual, NULL);
 
                 ABT_eventual_free(&args.eventual);
-*/
+
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
             }
-
+*/
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
 
