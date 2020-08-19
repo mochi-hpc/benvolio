@@ -568,7 +568,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             ++it2;
         }
         if (flush_offsets->size()) {
-            cache_flush_array(cache_file_info, flush_offsets);
+            //cache_flush_array(cache_file_info, flush_offsets);
         }
     }
     delete flush_offsets;
