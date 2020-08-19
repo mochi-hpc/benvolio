@@ -540,7 +540,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     std::vector<off_t>::iterator it;
 
     // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
-
+/*
     remaining_pages = 0;
     for ( it = pages->begin() + page_index; it != pages->end(); ++it ) {
         if (cache_file_info->cache_table->find(*it) == cache_file_info->cache_table->end()) {
@@ -568,11 +568,11 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             ++it2;
         }
         if (flush_offsets->size()) {
-            //cache_flush_array(cache_file_info, flush_offsets);
+            cache_flush_array(cache_file_info, flush_offsets);
         }
     }
     delete flush_offsets;
-
+*/
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
         cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
