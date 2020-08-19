@@ -640,7 +640,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
-    int test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         file_starts_new = new std::vector<off_t>;
         file_sizes_new = new std::vector<uint64_t>;
@@ -655,11 +654,10 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
-                //file_starts_new->push_back(file_starts[i]);
+                file_starts_new->push_back(file_starts[i]);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    //file_sizes_new->push_back(file_sizes[i]);
-                    test++;
+                    file_sizes_new->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
@@ -685,7 +683,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
-    printf("test value = %d\n", test);
     delete pages;
 }
 
@@ -710,15 +707,26 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     }
 }
 
-static void cache_page_deregister(Cache_file_info *cache_file_info) {
-    if (!cache_file_info->cache_evictions) {
+static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages) {
+    if (cache_file_info->cache_evictions) {
+        std::vector<std::vector<uint64_t>*>::iterator it;
+        std::vector<std::vector<off_t>*>::iterator it2;
+        for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
+            delete *it;
+        }
+        for (it2 = file_starts_array->begin(); it2 != file_starts_array->end(); ++it2){
+            delete *it2;
+        }
+        delete pages;
+        delete file_sizes_array;
+        delete file_starts_array;
+    } else {
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
         off_t cache_offset;
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
             cache_file_info->cache_page_mutex_table[0][it->first]->first--;
         }
-
     }
     delete cache_file_info->cache_page_table;
 }
@@ -2498,18 +2506,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
 
-            std::vector<std::vector<uint64_t>*>::iterator it;
-            std::vector<std::vector<off_t>*>::iterator it2;
-            for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
-                delete *it;
-            }
-            for (it2 = file_starts_array->begin(); it2 != file_starts_array->end(); ++it2){
-                delete *it2;
-            }
-            delete pages;
-            delete file_sizes_array;
-            delete file_starts_array;
-
         } else {
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
@@ -2533,7 +2529,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_sizes;
 
         }
-        cache_page_deregister(&cache_file_info);
+        cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
         cache_deregister_lock(cache_info, file, &cache_file_info);
 
         #else
