@@ -654,10 +654,10 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
-                file_starts_new->push_back(file_starts[i]);
+                //file_starts_new->push_back(file_starts[i]);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    //file_sizes_new->push_back(file_sizes[i]);
+                    file_sizes_new->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
@@ -2089,9 +2089,9 @@ static void write_ult(void *_args)
             #if BENVOLIO_CACHE_ENABLE == 1
 
             #if BENVOLIO_CACHE_STATISTICS == 1
-            //file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
+            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes, ABT_get_wtime());
             #else
-            //file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            file_xfer += cache_fetch_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             //file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             #endif
 
