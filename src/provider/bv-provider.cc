@@ -640,6 +640,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
+    int test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         file_starts_new = new std::vector<off_t>;
         file_sizes_new = new std::vector<uint64_t>;
@@ -658,6 +659,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
                     //file_sizes_new->push_back(file_sizes[i]);
+                    test++;
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
@@ -683,7 +685,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
-
+    printf("test value = %d\n", test);
     delete pages;
 }
 
