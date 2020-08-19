@@ -2697,17 +2697,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
-            std::vector<std::vector<uint64_t>*>::iterator it;
-            std::vector<std::vector<off_t>*>::iterator it2;
-            for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
-                delete *it;
-            }
-            for (it2 = file_starts_array->begin(); it2 != file_starts_array->end(); ++it2){
-                delete *it2;
-            }
-            delete pages;
-            delete file_sizes_array;
-            delete file_starts_array;
 
         } else {
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
@@ -2732,7 +2721,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_sizes;
 
         }
-        cache_page_deregister(&cache_file_info);
+        cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
         cache_deregister_lock(cache_info, file, &cache_file_info);
 
         #else
