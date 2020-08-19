@@ -540,6 +540,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     std::vector<off_t>::iterator it;
 
     // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
+/*
     remaining_pages = 0;
     for ( it = pages->begin() + page_index; it != pages->end(); ++it ) {
         if (cache_file_info->cache_table->find(*it) == cache_file_info->cache_table->end()) {
@@ -571,15 +572,19 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
     }
     delete flush_offsets;
+*/
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
+/*
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
         cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
         cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
         cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
     }
     page_index++;
+*/
     // As long as we have budgets, we keep allocating as many pages as possible.
-    while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
+    //while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
+    while (page_index < pages->size()) {
         for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
             cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
             cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
@@ -2456,7 +2461,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
             int page_index = 0, previous = 0;
-#if 1==2
+
             while (page_index < pages->size()) {
 /*
                 ABT_mutex_create(&args.mutex);
@@ -2486,7 +2491,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
             }
-#endif
+
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
 
