@@ -644,6 +644,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     j = 0;
     uint64_t test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
+/*
         file_starts_new = new std::vector<off_t>;
         file_sizes_new = new std::vector<uint64_t>;
         file_starts_array[0][0][j] = file_starts_new;
@@ -651,6 +652,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         pages_vec[0][0][j] = *it;
         j++;
         cache_offset = *it;
+*/
         //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
         cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
         for ( i = 0; i < file_starts.size(); ++i ) {
@@ -671,13 +673,13 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 }
             } else if ( file_starts[i] < cache_offset && file_starts[i] + file_sizes[i] > cache_offset ) {
                 //Start position is before the cache page, but part of its tail is inside the current page, we want a partial tail.
-                file_starts_new->push_back(cache_offset);
+                //file_starts_new->push_back(cache_offset);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     // The end of current request tail fall into this page, we are done here.
-                    file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
+                    //file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
                     //last_request_index = i;
                 } else {
-                    file_sizes_new->push_back(cache_size2);
+                    //file_sizes_new->push_back(cache_size2);
                 }
             } else {
                 // This request is after this page, we leave.
@@ -690,17 +692,19 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     if (test_max < test) {
         test_max = test;
     }
-
+/*
     j = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         delete file_starts_array[0][0][j];
         delete file_sizes_array[0][0][j];
         j++;
     }
+*/
     delete file_sizes_array[0];
     delete file_starts_array[0];
 
     delete pages;
+    delete pages_vec[0];
 }
 
 static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
