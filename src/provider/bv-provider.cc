@@ -717,7 +717,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
 
 static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages) {
     if (cache_file_info->cache_evictions) {
-
+/*
         std::vector<std::vector<uint64_t>*>::iterator it;
         std::vector<std::vector<off_t>*>::iterator it2;
         for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -729,7 +729,7 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         delete pages;
         delete file_sizes_array;
         delete file_starts_array;
-
+*/
     } else {
 
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
