@@ -2469,6 +2469,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
         //size_t ntimes = 1 + (client_bulk.size() -1)/xfersize;
         #if BENVOLIO_CACHE_ENABLE == 1
+/*
         std::vector<std::vector<uint64_t>*> *file_sizes_array;
         std::vector<std::vector<off_t>*> *file_starts_array;
         std::vector<off_t> *pages;
@@ -2543,6 +2544,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
         }
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
+*/
         cache_deregister_lock(cache_info, file, &cache_file_info);
 
         #else
