@@ -699,7 +699,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     if (pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
         cache_file_info->cache_evictions = 1;
-        //cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
     } else {
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
 
@@ -717,7 +717,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
 
 static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages) {
     if (cache_file_info->cache_evictions) {
-/*
+
         std::vector<std::vector<uint64_t>*>::iterator it;
         std::vector<std::vector<off_t>*>::iterator it2;
         for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -729,7 +729,7 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         delete pages;
         delete file_sizes_array;
         delete file_starts_array;
-*/
+
     } else {
 
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
@@ -2909,7 +2909,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v1, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
