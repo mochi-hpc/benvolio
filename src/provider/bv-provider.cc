@@ -48,6 +48,8 @@ namespace tl = thallium;
 static int BENVOLIO_CACHE_MAX_N_BLOCKS;
 static int BENVOLIO_CACHE_MIN_N_BLOCKS;
 static int BENVOLIO_CACHE_MAX_BLOCK_SIZE;
+static uint64_t test_max;
+static uint64_t test_sum;
 
 #if BENVOLIO_CACHE_ENABLE == 1
 typedef struct {
@@ -640,6 +642,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
+    uint64_t test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         file_starts_new = new std::vector<off_t>;
         file_sizes_new = new std::vector<uint64_t>;
@@ -655,14 +658,15 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
                 file_starts_new->push_back(file_starts[i]);
+                test++;
+                test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    file_sizes_new->push_back(file_sizes[i]);
+                    //file_sizes_new->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
-                    printf("error branch 1\n");
-                    file_sizes_new->push_back(cache_offset + cache_size2 - file_starts[i]);
+                    //file_sizes_new->push_back(cache_offset + cache_size2 - file_starts[i]);
                     //last_request_index = i;
                     //break;
                 }
@@ -672,11 +676,9 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     // The end of current request tail fall into this page, we are done here.
                     file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
-                    printf("error branch 2\n");
                     //last_request_index = i;
                 } else {
                     file_sizes_new->push_back(cache_size2);
-                    printf("error branch 3\n");
                 }
             } else {
                 // This request is after this page, we leave.
@@ -686,6 +688,10 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
+    if (test_max < test) {
+        test_max = test;
+    }
+
     j = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         delete file_starts_array[0][0][j];
@@ -2898,6 +2904,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
+            test_sum = 0;
+            test_max = -1;
             printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
@@ -2918,7 +2926,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
     ~bv_svc_provider() {
         #if BENVOLIO_CACHE_ENABLE == 1
-        printf("provider %d entered destroy function\n", ssg_rank);
+        printf("provider %d entered destroy function, test_sum = %llu, test_max = %llu\n", ssg_rank, (long long unsigned) test_sum, (long long unsigned)test_max);
         cache_shutdown_flag(cache_info);
         ABT_eventual_wait(rm_args.eventual, NULL);
         ABT_eventual_free(&rm_args.eventual);
