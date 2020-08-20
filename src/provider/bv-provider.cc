@@ -687,6 +687,9 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
+    if (pages->size() > 100000000) {
+        printf("page size anomaly = %ld\n",pages->size());
+    }
     if (test_max < test) {
         test_max = test;
     }
