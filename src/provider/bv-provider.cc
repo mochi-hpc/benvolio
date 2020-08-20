@@ -642,12 +642,12 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     j = 0;
     uint64_t test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
+        cache_offset = *it;
+
         file_starts_array[0][0][j] = new std::vector<off_t>;
         file_sizes_array[0][0][j] = new std::vector<uint64_t>;
-        pages_vec[0][0][j] = *it;
-        j++;
+        pages_vec[0][0][j] = cache_offset;
 
-        cache_offset = *it;
         //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
         cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
         for ( i = 0; i < file_starts.size(); ++i ) {
@@ -682,37 +682,27 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
                 //break;
             }
         }
+        j++;
 
     }
     if (test_max < test) {
         test_max = test;
     }
 
-    j = 0;
-    for ( it = pages->begin(); it != pages->end(); ++it ) {
-        delete file_starts_array[0][0][j];
-        delete file_sizes_array[0][0][j];
-        j++;
-    }
-
-    delete file_sizes_array[0];
-    delete file_starts_array[0];
-
     delete pages;
-    delete pages_vec[0];
 }
 
 static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     size_t pages = cache_count_requests_pages(cache_file_info, file_starts, file_sizes);
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
-    if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
+    if (pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
+        printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
         cache_file_info->cache_evictions = 1;
         cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
-        //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
-        //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
-/*
+        printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+
         cache_file_info->cache_evictions = 0;
         for ( size_t i = 0; i < file_starts.size(); ++i ) {
             cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
@@ -721,13 +711,13 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
             cache_file_info->cache_page_mutex_table[0][it->first]->first++;
         }
-*/
+
     }
 }
 
 static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages) {
     if (cache_file_info->cache_evictions) {
-/*
+
         std::vector<std::vector<uint64_t>*>::iterator it;
         std::vector<std::vector<off_t>*>::iterator it2;
         for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -739,16 +729,16 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         delete pages;
         delete file_sizes_array;
         delete file_starts_array;
-*/
+
     } else {
-/*
+
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
         off_t cache_offset;
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
             cache_file_info->cache_page_mutex_table[0][it->first]->first--;
         }
-*/
+
     }
     delete cache_file_info->cache_page_table;
 }
@@ -2493,7 +2483,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
             int page_index = 0, previous = 0;
-/*
+
             while (page_index < pages->size()) {
 
                 ABT_mutex_create(&args.mutex);
@@ -2523,13 +2513,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
             }
-*/
+
 
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
 
         } else {
-/*
+
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
             for ( i = 0; i < file_starts.size(); ++i ) {
@@ -2550,7 +2540,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
-*/
+
         }
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
         cache_deregister_lock(cache_info, file, &cache_file_info);
