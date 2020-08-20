@@ -654,12 +654,10 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
-                if (file_starts_new->size() < 2) {
-                    file_starts_new->push_back(file_starts[i]);
-                }
+                file_starts_new->push_back(file_starts[i]);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                     //file_sizes_new->push_back(file_sizes[i]);
+                    file_sizes_new->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
@@ -2900,7 +2898,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
-            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
