@@ -2559,7 +2559,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #endif
         local_stats.write_response = ABT_get_wtime();
         //printf("responded with value %llu\n", (long long unsigned)args.client_cursor);
-        req.respond(args.client_cursor);
+        //req.respond(args.client_cursor);
+
+        total_io_amount = 0;
+        for ( i = 0; i < file_sizes.size(); ++i ) {
+            total_io_amount += file_sizes[i];
+        }
+        req.respond(total_io_amount);
+
         local_stats.write_response = ABT_get_wtime() - local_stats.write_response;
 
         local_stats += args.stats;
@@ -2894,12 +2901,12 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v5, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
