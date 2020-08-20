@@ -688,6 +688,15 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
+    j = 0;
+    for ( it = pages->begin(); it != pages->end(); ++it ) {
+        delete file_starts_array[0][0][j];
+        delete file_sizes_array[0][0][j];
+        j++;
+    }
+    delete file_sizes_array[0];
+    delete file_starts_array[0];
+
     delete pages;
 }
 
@@ -714,6 +723,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
 
 static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages) {
     if (cache_file_info->cache_evictions) {
+/*
         std::vector<std::vector<uint64_t>*>::iterator it;
         std::vector<std::vector<off_t>*>::iterator it2;
         for (it = file_sizes_array->begin(); it != file_sizes_array->end(); ++it){
@@ -725,6 +735,7 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         delete pages;
         delete file_sizes_array;
         delete file_starts_array;
+*/
     } else {
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
         off_t cache_offset;
@@ -2889,7 +2900,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
-            printf("implementation version v2, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
