@@ -687,11 +687,11 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         }
 
     }
-    if (pages->size() > 100000000) {
-        printf("page size anomaly = %ld\n",pages->size());
-    }
     if (test_max < test) {
         test_max = test;
+        if (test_max > 1000000) {
+            printf("test_max = %llu, pages->size()=%ld\n", test_max, pages->size());
+        }
     }
 
     j = 0;
@@ -2907,7 +2907,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16384;
             }
             test_sum = 0;
-            test_max = -1;
+            test_max = 0;
             printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
