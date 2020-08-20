@@ -653,12 +653,12 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         cache_offset = *it;
         //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
         cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
-        test++;
-        test_sum++;
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
                 //file_starts_new->push_back(file_starts[i]);
+                test++;
+                test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
                     //file_sizes_new->push_back(file_sizes[i]);
@@ -689,9 +689,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     }
     if (test_max < test) {
         test_max = test;
-        if (test_max > 1000000) {
-            printf("test_max = %llu, pages->size()=%ld\n", test_max, pages->size());
-        }
     }
 
     j = 0;
@@ -2908,7 +2905,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v1, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
