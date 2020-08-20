@@ -616,8 +616,6 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, std::vector
 
 static void cache_partition_request(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
     //std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
-    std::vector<off_t>* file_starts_new;
-    std::vector<uint64_t>* file_sizes_new;
     std::set<off_t> *pages = new std::set<off_t>;
     off_t cache_offset;
     size_t i, j, last_request_index;
@@ -644,42 +642,39 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     j = 0;
     uint64_t test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
-/*
-        file_starts_new = new std::vector<off_t>;
-        file_sizes_new = new std::vector<uint64_t>;
-        file_starts_array[0][0][j] = file_starts_new;
-        file_sizes_array[0][0][j] = file_sizes_new;
+        file_starts_array[0][0][j] = new std::vector<off_t>;
+        file_sizes_array[0][0][j] = new std::vector<uint64_t>;
         pages_vec[0][0][j] = *it;
         j++;
+
         cache_offset = *it;
-*/
         //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
         cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
-                //file_starts_new->push_back(file_starts[i]);
+                //file_starts_array[0][0][j]->push_back(file_starts[i]);
                 test++;
                 test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    //file_sizes_new->push_back(file_sizes[i]);
+                    //file_sizes_array[0][0][j]->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
-                    //file_sizes_new->push_back(cache_offset + cache_size2 - file_starts[i]);
+                    //file_sizes_array[0][0][j]->push_back(cache_offset + cache_size2 - file_starts[i]);
                     //last_request_index = i;
                     //break;
                 }
             } else if ( file_starts[i] < cache_offset && file_starts[i] + file_sizes[i] > cache_offset ) {
                 //Start position is before the cache page, but part of its tail is inside the current page, we want a partial tail.
-                //file_starts_new->push_back(cache_offset);
+                //file_starts_array[0][0][j]->push_back(cache_offset);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     // The end of current request tail fall into this page, we are done here.
-                    //file_sizes_new->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
+                    //file_sizes_array[0][0][j]->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
                     //last_request_index = i;
                 } else {
-                    //file_sizes_new->push_back(cache_size2);
+                    //file_sizes_array[0][0][j]->push_back(cache_size2);
                 }
             } else {
                 // This request is after this page, we leave.
@@ -692,14 +687,14 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     if (test_max < test) {
         test_max = test;
     }
-/*
+
     j = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         delete file_starts_array[0][0][j];
         delete file_sizes_array[0][0][j];
         j++;
     }
-*/
+
     delete file_sizes_array[0];
     delete file_starts_array[0];
 
