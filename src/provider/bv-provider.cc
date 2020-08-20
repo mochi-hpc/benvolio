@@ -653,28 +653,28 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
-                //file_starts_array[0][0][j]->push_back(file_starts[i]);
+                file_starts_array[0][0][j]->push_back(file_starts[i]);
                 test++;
                 test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
-                    //file_sizes_array[0][0][j]->push_back(file_sizes[i]);
+                    file_sizes_array[0][0][j]->push_back(file_sizes[i]);
                     // This request is done, we do not need it anymore later.
                 } else {
                     //Request tail can be out of this page, we need to chop the request into two halves. We want the head here.
-                    //file_sizes_array[0][0][j]->push_back(cache_offset + cache_size2 - file_starts[i]);
+                    file_sizes_array[0][0][j]->push_back(cache_offset + cache_size2 - file_starts[i]);
                     //last_request_index = i;
                     //break;
                 }
             } else if ( file_starts[i] < cache_offset && file_starts[i] + file_sizes[i] > cache_offset ) {
                 //Start position is before the cache page, but part of its tail is inside the current page, we want a partial tail.
-                //file_starts_array[0][0][j]->push_back(cache_offset);
+                file_starts_array[0][0][j]->push_back(cache_offset);
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     // The end of current request tail fall into this page, we are done here.
-                    //file_sizes_array[0][0][j]->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
+                    file_sizes_array[0][0][j]->push_back(file_sizes[i] - (cache_offset - file_starts[i]));
                     //last_request_index = i;
                 } else {
-                    //file_sizes_array[0][0][j]->push_back(cache_size2);
+                    file_sizes_array[0][0][j]->push_back(cache_size2);
                 }
             } else {
                 // This request is after this page, we leave.
@@ -708,10 +708,11 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
     if ( pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
         cache_file_info->cache_evictions = 1;
-        //cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
+        cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
         //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
     } else {
         //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+/*
         cache_file_info->cache_evictions = 0;
         for ( size_t i = 0; i < file_starts.size(); ++i ) {
             cache_allocate_memory(cache_file_info, file_starts[i], file_sizes[i]);
@@ -720,6 +721,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
             cache_file_info->cache_page_mutex_table[0][it->first]->first++;
         }
+*/
     }
 }
 
@@ -739,12 +741,14 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         delete file_starts_array;
 */
     } else {
+/*
         std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
         off_t cache_offset;
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
             cache_file_info->cache_page_mutex_table[0][it->first]->first--;
         }
+*/
     }
     delete cache_file_info->cache_page_table;
 }
@@ -2525,6 +2529,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_sizes;
 
         } else {
+/*
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
             for ( i = 0; i < file_starts.size(); ++i ) {
@@ -2545,7 +2550,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             delete cache_file_info.file_starts;
             delete cache_file_info.file_sizes;
-
+*/
         }
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
         cache_deregister_lock(cache_info, file, &cache_file_info);
