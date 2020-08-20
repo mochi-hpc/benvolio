@@ -577,7 +577,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
 
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
     for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
-        cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+        //cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
         cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
         cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
     }
@@ -585,7 +585,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     // As long as we have budgets, we keep allocating as many pages as possible.
     while (cache_file_info->cache_table->size() <= cache_file_info->cache_block_reserved && page_index < pages->size()) {
         for ( i = 0; i < file_starts_array[0][page_index]->size(); ++i ) {
-            cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
+            //cache_allocate_memory(cache_file_info, file_starts_array[0][page_index][0][i], file_sizes_array[0][page_index][0][i]);
             cache_file_info->file_starts->push_back(file_starts_array[0][page_index][0][i]);
             cache_file_info->file_sizes->push_back(file_sizes_array[0][page_index][0][i]);
         }
@@ -2913,7 +2913,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v2, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
