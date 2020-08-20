@@ -653,13 +653,12 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         cache_offset = *it;
         //printf("cache offset = %llu\n", (long long unsigned)cache_offset);
         cache_size2 = MIN(cache_size, stripe_size - (cache_offset % stripe_size));
-
+        test++;
+        test_sum++;
         for ( i = 0; i < file_starts.size(); ++i ) {
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
                 //file_starts_new->push_back(file_starts[i]);
-                test++;
-                test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
                     //file_sizes_new->push_back(file_sizes[i]);
