@@ -1057,48 +1057,6 @@ static void cache_finalize(Cache_info *cache_info) {
     free(cache_info->cache_block_used);
 }
 
-
-/*
- * This function is not thread-safe, so it should be called by a thread-safe function.
- * Flush a single cache block into memory.
-*/
-static void cache_flush(Cache_file_info *cache_file_info, off_t cache_offset) {
-    // Time interval counter.
-    #if BENVOLIO_CACHE_STATISTICS == 1
-    cache_file_info->cache_stat->cache_counter.cache_block_flush_count++;
-
-    #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
-    int t_index = CACULATE_TIMESTAMP(ABT_get_wtime(), cache_file_info->init_timestamp[0]);
-    if (cache_file_info->cache_counter_table->find(t_index) != cache_file_info->cache_counter_table->end() ) {
-        cache_file_info->cache_counter_table[0][t_index]->cache_block_flush_count++;
-    } else {
-        cache_file_info->cache_counter_table[0][t_index] = (Cache_counter*) calloc(1, sizeof(Cache_counter));
-        cache_file_info->cache_counter_table[0][t_index]->cache_page_usage = new std::map<off_t, uint64_t>;
-        cache_file_info->cache_counter_table[0][t_index]->cache_block_flush_count++;
-    }
-    #endif
-
-    double time = ABT_get_wtime();
-    #endif
-    if (cache_file_info->cache_update_list->find(cache_offset) != cache_file_info->cache_update_list->end()) {
-        //write-back when the cache page is dirty. Maybe we can try to prioritize pages untouched or almost finished?
-        ssize_t ret;
-        abt_io_op_t * write_op = abt_io_pwrite_nb(cache_file_info->abt_id, cache_file_info->fd, cache_file_info->cache_table[0][cache_offset]->second, cache_file_info->cache_table[0][cache_offset]->first, cache_offset, &ret );
-        abt_io_op_wait(write_op);
-        abt_io_op_free(write_op);
-        cache_file_info->cache_update_list->erase(cache_offset);
-    }
-
-    cache_file_info->cache_offset_list->erase(cache_file_info->cache_offset_list->begin());
-    //Remove memory and table entry
-    free(cache_file_info->cache_table[0][cache_offset]->second);
-    delete cache_file_info->cache_table[0][cache_offset];
-    cache_file_info->cache_table->erase(cache_offset);
-    #if BENVOLIO_CACHE_STATISTICS == 1
-    cache_file_info->cache_stat->flush_time += ABT_get_wtime() - time;
-    #endif
-}
-
 /*
  * This function is not thread-safe, so it should be called by a thread-safe function.
  * Flush many cache blocks into memory.
@@ -2548,7 +2506,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_sizes;
 
         } else {
-
+            printf("should not even be here !!!1\n");
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
             for ( i = 0; i < file_starts.size(); ++i ) {
@@ -2939,7 +2897,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v7, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
