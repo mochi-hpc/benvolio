@@ -394,7 +394,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
-        //free(it2->second->second);
+        free(it2->second->second);
         delete it2->second;
     }
     std::map<off_t, std::pair<int, tl::mutex*>*> *cache_file_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
@@ -557,7 +557,6 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
         // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
         remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
-/*
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
@@ -569,13 +568,14 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             }
             ++it2;
         }
-*/
+/*
         if (cache_file_info->cache_offset_list->size() && cache_file_info->cache_page_mutex_table[0][cache_file_info->cache_offset_list[0][0]]->first == 0) {
             flush_offsets->push_back(cache_file_info->cache_offset_list[0][0]);
         }
         if (flush_offsets->size()) {
             cache_flush_array(cache_file_info, flush_offsets);
         }
+*/
     }
 
     delete flush_offsets;
@@ -971,7 +971,7 @@ static void cache_finalize(Cache_info *cache_info) {
     for ( it = cache_info->cache_table->begin(); it != cache_info->cache_table->end(); ++it ) {
         std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
         for ( it2 = it->second->begin(); it2 != it->second->end(); ++it2 ) {
-            //free(it2->second->second);
+            free(it2->second->second);
             delete it2->second;
         }
         delete it->second;
@@ -1279,7 +1279,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 16384);
+            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
             if (test_max < cache_size2) {
                 test_max = cache_size2;
             }
@@ -1804,7 +1804,7 @@ static int cache_shutdown_flag(Cache_info *cache_info) {
 
 static int cache_resource_manager(Cache_info *cache_info, abt_io_instance_id abt_id) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
-    //cache_flush_all(cache_info, 1);
+    cache_flush_all(cache_info, 1);
     return cache_info->shutdown[0];
 }
 
@@ -2898,7 +2898,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v2, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
