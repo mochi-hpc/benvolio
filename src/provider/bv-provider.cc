@@ -553,7 +553,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     std::vector<off_t> *flush_offsets = new std::vector<off_t>;
     std::vector<off_t>::iterator it2;
     // Entering this condition means that we are out of memory budget, we need to try to remove pages that are not currently used by anyone.
-/*
+
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
         // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
         remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
@@ -571,10 +571,10 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             ++it2;
         }
         if (flush_offsets->size()) {
-            cache_flush_array(cache_file_info, flush_offsets);
+            //cache_flush_array(cache_file_info, flush_offsets);
         }
     }
-*/
+
     delete flush_offsets;
 
     // We have to process at least one page, regardless of memory budget. This could be a bad idea.
@@ -2916,7 +2916,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v5, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
