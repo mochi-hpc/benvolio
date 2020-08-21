@@ -1278,8 +1278,8 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
-            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
+            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
             if (test_max < cache_size2) {
                 test_max = cache_size2;
             }
@@ -2893,8 +2893,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
             }
             test_sum = 0;
             test_max = 0;
