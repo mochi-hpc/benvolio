@@ -1130,7 +1130,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
 
         std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
         if (it3!=cache_file_info->cache_offset_list->end()) {
-             cache_file_info->cache_offset_list->erase(it3);
+             //cache_file_info->cache_offset_list->erase(it3);
         } else {
             printf("cache offset list is empty !!!!!!!!!!!\n");
         }
