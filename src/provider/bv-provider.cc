@@ -560,7 +560,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
-            if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
+            if (cache_file_info->cache_page_mutex_table[0][flush_offset]->first == 0) {
                 flush_offsets->push_back(flush_offset);
                 if ( flush_offsets->size() == remove_counter ) {
                     break;
@@ -574,7 +574,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         }
 
         if (flush_offsets->size()) {
-            cache_flush_array(cache_file_info, flush_offsets);
+            //cache_flush_array(cache_file_info, flush_offsets);
         }
     }
 
@@ -1149,6 +1149,11 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
         free(cache_file_info->cache_table[0][cache_offset]->second);
         delete cache_file_info->cache_table[0][cache_offset];
         cache_file_info->cache_table->erase(cache_offset);
+
+        delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
+        delete cache_file_info->cache_page_mutex_table[0][cache_offset];
+        cache_file_info->cache_page_mutex_table->erase(cache_offset);
+
         std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
         cache_file_info->cache_offset_list->erase(it3);
 
@@ -1295,13 +1300,11 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
-            if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
-                //Register cache page lock
-                cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
-                cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
-                cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
-                //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
-            }
+            //Register cache page lock
+            cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+            //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
 
             // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
 
@@ -2912,7 +2915,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v1, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
