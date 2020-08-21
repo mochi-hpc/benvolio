@@ -170,7 +170,7 @@ static void cache_remove_file_lock(Cache_info *cache_info, std::string file);
 static int cache_exist(Cache_info *cache_info, std::string file);
 static void cache_flush_all(Cache_info *cache_info, int check_time);
 static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_start, uint64_t file_size);
-static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_t> *cache_offsets);
+static void cache_flush_array(Cache_file_info *cache_file_info, const std::vector<off_t> *cache_offsets);
 
 #if BENVOLIO_CACHE_STATISTICS == 1
 #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -1063,6 +1063,7 @@ static void cache_finalize(Cache_info *cache_info) {
 */
 static void cache_flush_array(Cache_file_info *cache_file_info, const std::vector<off_t> *cache_offsets) {
     std::vector<off_t>::iterator it;
+    unsigned i;
     off_t cache_offset;
     std::vector<abt_io_op_t*> *write_ops = new std::vector<abt_io_op_t*>;
     abt_io_op_t * write_op;
@@ -1099,8 +1100,8 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
         it2 = write_ops->begin();
     }
 */
-    for ( it = cache_offsets->begin(); it != cache_offsets->end(); ++it ) {
-        cache_offset = *it;
+    for ( i = 0; i < cache_offsets->size(); ++i ) {
+        cache_offset = cache_offsets[0][i];
 /*
         if (cache_file_info->cache_update_list->find(cache_offset) != cache_file_info->cache_update_list->end()) {
             cache_file_info->cache_update_list->erase(cache_offset);
