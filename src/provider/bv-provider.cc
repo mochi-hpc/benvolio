@@ -1109,7 +1109,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
 */
         //Remove memory and table entry
         if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
-            //free(cache_file_info->cache_table[0][cache_offset]->second);
+            free(cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
         } else {
@@ -1278,7 +1278,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
 
@@ -2899,7 +2899,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v6, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v7, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
