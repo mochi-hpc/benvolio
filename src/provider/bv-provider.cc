@@ -570,10 +570,6 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
             ++it2;
         }
 */
-        test_sum += remove_counter;
-        if (test_max < remove_counter) {
-            test_max = remove_counter;
-        }
         if (cache_file_info->cache_offset_list->size() && cache_file_info->cache_page_mutex_table[0][cache_file_info->cache_offset_list[0][0]]->first == 0) {
             flush_offsets->push_back(cache_file_info->cache_offset_list[0][0]);
         }
@@ -2413,6 +2409,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
         /* Process cache */
         #if BENVOLIO_CACHE_ENABLE == 1
+        if (test_max < stripe_count) {
+            test_max = stripe_count;
+        }
+        if (test_sum > stripe_count || test_sum == 0) {
+            test_sum = stripe_count;
+        }
+
         Cache_file_info cache_file_info;
         
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
@@ -2898,7 +2901,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
