@@ -1153,7 +1153,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
         }
 */
         //Remove memory and table entry
-
+/*
         free(cache_file_info->cache_table[0][cache_offset]->second);
         delete cache_file_info->cache_table[0][cache_offset];
         cache_file_info->cache_table->erase(cache_offset);
@@ -1164,7 +1164,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
 
         std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
         cache_file_info->cache_offset_list->erase(it3);
-
+*/
     }
     delete write_ops;
 
