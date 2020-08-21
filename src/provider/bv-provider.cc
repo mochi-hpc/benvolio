@@ -394,7 +394,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
-        free(it2->second->second);
+        //free(it2->second->second);
         delete it2->second;
     }
     std::map<off_t, std::pair<int, tl::mutex*>*> *cache_file_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
@@ -971,7 +971,7 @@ static void cache_finalize(Cache_info *cache_info) {
     for ( it = cache_info->cache_table->begin(); it != cache_info->cache_table->end(); ++it ) {
         std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
         for ( it2 = it->second->begin(); it2 != it->second->end(); ++it2 ) {
-            free(it2->second->second);
+            //free(it2->second->second);
             delete it2->second;
         }
         delete it->second;
@@ -1109,7 +1109,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
 */
         //Remove memory and table entry
         if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
-            free(cache_file_info->cache_table[0][cache_offset]->second);
+            //free(cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
         } else {
@@ -1278,7 +1278,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
 
