@@ -1153,18 +1153,28 @@ static void cache_flush_array(Cache_file_info *cache_file_info, std::vector<off_
         }
 */
         //Remove memory and table entry
-/*
-        free(cache_file_info->cache_table[0][cache_offset]->second);
-        delete cache_file_info->cache_table[0][cache_offset];
-        cache_file_info->cache_table->erase(cache_offset);
-
-        delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
-        delete cache_file_info->cache_page_mutex_table[0][cache_offset];
-        cache_file_info->cache_page_mutex_table->erase(cache_offset);
+        if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
+            free(cache_file_info->cache_table[0][cache_offset]->second);
+            delete cache_file_info->cache_table[0][cache_offset];
+            cache_file_info->cache_table->erase(cache_offset);
+        } else {
+            printf("cache table is empty !!!!!!!!!!!\n");
+        }
+        
+        if ( cache_file_info->cache_page_mutex_table->find(cache_offset) != cache_file_info->cache_page_mutex_table->end() ) {
+            delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
+            delete cache_file_info->cache_page_mutex_table[0][cache_offset];
+            cache_file_info->cache_page_mutex_table->erase(cache_offset);
+        } else {
+            printf("cache mutex table is empty !!!!!!!!!!!\n");
+        }
 
         std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
-        cache_file_info->cache_offset_list->erase(it3);
-*/
+        if (it3!=cache_file_info->cache_offset_list->end()) {
+             cache_file_info->cache_offset_list->erase(it3);
+        } else {
+            printf("cache offset list is empty !!!!!!!!!!!\n");
+        }
     }
     delete write_ops;
 
@@ -2923,7 +2933,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v4, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v5, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
