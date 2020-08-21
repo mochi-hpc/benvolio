@@ -1123,11 +1123,9 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
         }
         
         if ( cache_file_info->cache_page_mutex_table->find(cache_offset) != cache_file_info->cache_page_mutex_table->end() ) {
-/*
             delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
             delete cache_file_info->cache_page_mutex_table[0][cache_offset];
             cache_file_info->cache_page_mutex_table->erase(cache_offset);
-*/
         } else {
             printf("cache mutex table is empty !!!!!!!!!!!\n");
         }
@@ -1272,6 +1270,13 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             cache_file_info->cache_update_list->insert(cache_offset);
         }
 
+        if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
+            //Register cache page lock
+            cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
+            cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+        }
+
         if ( cache_file_info->cache_table->find(cache_offset) == cache_file_info->cache_table->end() ) {
             /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
             cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
@@ -1281,10 +1286,6 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
-            //Register cache page lock
-            cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
             //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
 
             // The last stripe does not necessarily have stripe size number of bytes, so we need to store the actual number of bytes cached (so we can do write-back later without appending garbage data). Also, if write operation covers an entire cache page, we should just skip the read operation.
