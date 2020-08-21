@@ -538,7 +538,7 @@ static void cache_request_counter(Cache_info *cache_info, const std::vector<uint
 
 static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<std::vector<off_t>*> *file_starts_array, std::vector<std::vector<uint64_t>*> *file_sizes_array, std::vector<off_t> *pages, int page_index) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
-    unsigned i, remove_counter, counter, remaining_pages;
+    unsigned i, remove_counter, remaining_pages;
     std::vector<off_t>::iterator it;
 
     // Count the remaining pages that has to be created for this RPC. This can be differnt from what we know in cache_page_register function since time has elapsed and the cache table could be different.
@@ -557,19 +557,22 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
         // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
         remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
-        counter = 0;
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
             if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
                 flush_offsets->push_back(flush_offset);
-                counter++;
-                if ( counter == remove_counter ) {
+                if ( flush_offsets->size() == remove_counter ) {
                     break;
                 }
             }
             ++it2;
         }
+        test_sum += remove_counter;
+        if (test_max < remove_counter) {
+            test_max = remove_counter;
+        }
+
         if (flush_offsets->size()) {
             //cache_flush_array(cache_file_info, flush_offsets);
         }
@@ -643,7 +646,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
     std::set<off_t>::iterator it;
     last_request_index = 0;
     j = 0;
-    uint64_t test = 0;
     for ( it = pages->begin(); it != pages->end(); ++it ) {
         cache_offset = *it;
 
@@ -657,8 +659,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
             if (file_starts[i] >= cache_offset && file_starts[i] < cache_offset + cache_size2) {
                 //Start position inside cache page.
                 file_starts_array[0][0][j]->push_back(file_starts[i]);
-                test++;
-                test_sum++;
                 if (file_starts[i] + file_sizes[i] <= cache_offset + cache_size2) {
                     //Request fall into the page entirely.
                     file_sizes_array[0][0][j]->push_back(file_sizes[i]);
@@ -688,10 +688,6 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
         j++;
 
     }
-    if (test_max < test) {
-        test_max = test;
-    }
-
     delete pages;
 }
 
