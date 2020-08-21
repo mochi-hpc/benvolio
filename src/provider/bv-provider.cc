@@ -556,6 +556,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
 
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
         // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
+/*
         remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
@@ -572,7 +573,10 @@ static int cache_page_register2(Cache_file_info *cache_file_info, std::vector<st
         if (test_max < remove_counter) {
             test_max = remove_counter;
         }
-
+*/
+        if (cache_file_info->cache_offset_list->size() && cache_file_info->cache_page_mutex_table[0][cache_file_info->cache_offset_list[0][0]]->first == 0) {
+            flush_offsets->insert(cache_file_info->cache_offset_list[0][0]);
+        }
         if (flush_offsets->size()) {
             cache_flush_array(cache_file_info, flush_offsets);
         }
@@ -2915,7 +2919,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             }
             test_sum = 0;
             test_max = 0;
-            printf("implementation version v2, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v3, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
