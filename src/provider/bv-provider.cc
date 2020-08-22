@@ -1114,7 +1114,6 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
             free(cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
-            test_max++;
         } else {
             printf("cache table is empty !!!!!!!!!!!\n");
         }
@@ -1284,7 +1283,9 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
             test_sum++;
-
+            if ( test_max < cache_size2 ) {
+                test_max = cache_size2;
+            }
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
 
@@ -2893,8 +2894,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
             }
             test_sum = 0;
             test_max = 0;
