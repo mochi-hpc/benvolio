@@ -2894,7 +2894,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 8388608;
             }
             test_sum = 0;
             test_max = 0;
