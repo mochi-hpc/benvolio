@@ -1114,6 +1114,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
             free(cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
+            test_max++;
         } else {
             printf("cache table is empty !!!!!!!!!!!\n");
         }
