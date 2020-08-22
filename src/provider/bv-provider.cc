@@ -39,8 +39,8 @@
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 0
-#define BENVOLIO_CACHE_STATISTICS_DETAILED 0
+#define BENVOLIO_CACHE_STATISTICS 1
+#define BENVOLIO_CACHE_STATISTICS_DETAILED 1
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
 
@@ -1647,7 +1647,8 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            cache_file_info->cache_table[0][cache_offset]->second = cache_malloc(cache_file_info->cache_backup_memory, cache_size);
 
             if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
                 //Register cache page lock
