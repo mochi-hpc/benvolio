@@ -1058,7 +1058,6 @@ static void cache_finalize(Cache_info *cache_info) {
  * Flush many cache blocks into memory.
 */
 static void cache_flush_array(Cache_file_info *cache_file_info, const std::vector<off_t> *cache_offsets) {
-    std::vector<off_t>::iterator it;
     unsigned i;
     off_t cache_offset;
     std::vector<abt_io_op_t*> *write_ops = new std::vector<abt_io_op_t*>;
@@ -1068,8 +1067,8 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
     double time = ABT_get_wtime();
     #endif
 
-    for ( it = cache_offsets->begin(); it != cache_offsets->end(); ++it ) {
-        cache_offset = *it;
+    for ( i = 0; i < cache_offsets->size(); ++i ) {
+        cache_offset = cache_offsets[0][i];
         if (cache_file_info->cache_update_list->find(cache_offset) != cache_file_info->cache_update_list->end()) {
             // Time interval counter.
             #if BENVOLIO_CACHE_STATISTICS == 1
