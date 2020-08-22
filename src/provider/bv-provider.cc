@@ -88,6 +88,7 @@ typedef struct {
     std::map<std::string, double> *cache_timestamps;
     std::map<std::string, int> *fd_table;
     std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*> *cache_page_mutex_table;
+    std::map<std::string, std::vector<char*>*> *cache_backup_memory_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -117,9 +118,6 @@ typedef struct {
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_table;
     /* Store which cache block has been modified by a write operation.*/
     std::set<off_t>* cache_update_list;
-    /* The order of cache blocks fetched. When we flush a block, it starts from the first element of the list*/
-    std::vector<off_t>* cache_offset_list;
-    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_page_mutex_table;
     tl::mutex *cache_mutex;
     /* The rest of variables does not require a lock for their accesses*/
     int cache_evictions;
@@ -131,6 +129,10 @@ typedef struct {
     #endif
     #endif
     std::map<off_t, std::pair<uint64_t, char*>> *cache_page_table;
+    /* The order of cache blocks fetched. When we flush a block, it starts from the first element of the list*/
+    std::vector<off_t>* cache_offset_list;
+    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_page_mutex_table;
+    std::vector<char*>* cache_backup_memory;
     std::vector<uint64_t> *file_sizes;
     std::vector<off_t> *file_starts;
 
@@ -177,6 +179,21 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
 static void cache_page_usage_log(Cache_info *cache_info, std::string file);
 #endif
 #endif
+
+static char* cache_malloc(std::vector<char*> *cache_backup_memory, uint64_t page_size) {
+    if (cache_backup_memory->size()) {
+        char* result = cache_backup_memory[0][0];
+        cache_backup_memory->erase(cache_backup_memory->begin());
+        return result;
+    } else {
+        return (char*) malloc(sizeof(char) * page_size);
+    }
+}
+
+static void cache_free(std::vector<char*> *cache_backup_memory, char* mem_ptr) {
+    cache_backup_memory->push_back(mem_ptr);
+}
+
 static void cache_add_counter(Cache_counter *cache_counter1, Cache_counter *cache_counter2) {
     cache_counter1->cache_page_hit_count += cache_counter2->cache_page_hit_count;
     cache_counter1->cache_page_fetch_count += cache_counter2->cache_page_fetch_count;
@@ -393,10 +410,17 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     //printf("ssg_rank %d -------------------------removing cache for file %s\n", cache_info->ssg_rank, file.c_str());
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
+    std::vector<char*> *cache_backup_memory = cache_info->cache_backup_memory_table[0][file];
+    std::vector<char*>::iterator it3;
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
-        free(it2->second->second);
+        //free(it2->second->second);
+        cache_free(cache_backup_memory, it2->second->second);
         delete it2->second;
     }
+    for ( it3 = cache_backup_memory->begin(); it3 != cache_backup_memory->end(); ++it3 ) {
+        free(*it3);
+    }
+
     std::map<off_t, std::pair<int, tl::mutex*>*> *cache_file_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
     std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
     for (it11 = cache_file_page_mutex_table->begin(); it11 != cache_file_page_mutex_table->end(); ++it11) {
@@ -407,6 +431,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
         delete it11->second;
     }
 
+    delete cache_backup_memory;
     delete cache_file_table;
     delete cache_info->cache_update_table[0][file];
     delete cache_info->cache_mutex_table[0][file];
@@ -423,6 +448,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     cache_info->register_table->erase(file);
     cache_info->cache_timestamps->erase(file);
     cache_info->fd_table->erase(file);
+    cache_info->cache_backup_memory_table->erase(file);
 }
 
 static void cache_remove_file_lock(Cache_info *cache_info, std::string file) {
@@ -695,12 +721,12 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     size_t pages = cache_count_requests_pages(cache_file_info, file_starts, file_sizes);
     cache_file_info->cache_page_table = new std::map<off_t, std::pair<uint64_t, char*>>;
-    if (1 ||pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
-        //printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+    if (pages + cache_file_info->cache_table->size() > cache_file_info->cache_block_reserved ) {
+        printf("ssg_rank %d entering cache eviction strategies, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
         cache_file_info->cache_evictions = 1;
         cache_partition_request(cache_file_info, file_starts, file_sizes, file_starts_array, file_sizes_array, pages_vec);
     } else {
-        //printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
+        printf("ssg_rank %d entering cache preregistration scheme, pages needed = %llu, page used = %lu, budgets = %llu\n", cache_file_info->ssg_rank, (long long unsigned)pages, (long long unsigned) cache_file_info->cache_table->size() ,(long long unsigned) cache_file_info->cache_block_reserved);
 
         cache_file_info->cache_evictions = 0;
         for ( size_t i = 0; i < file_starts.size(); ++i ) {
@@ -763,6 +789,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_mutex = new tl::mutex;
         cache_file_info->cache_offset_list = new std::vector<off_t>;
         cache_file_info->cache_page_mutex_table = new std::map<off_t, std::pair<int, tl::mutex*>*>;
+        cache_file_info->cache_backup_memory = new std::vector<char*>;
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
         if (cache_info->cache_block_used[0] >= BENVOLIO_CACHE_MAX_N_BLOCKS) {
@@ -788,6 +815,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_info->cache_offset_list_table[0][file] = cache_file_info->cache_offset_list;
         cache_info->cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
         cache_info->cache_page_mutex_table[0][file] = cache_file_info->cache_page_mutex_table;
+        cache_info->cache_backup_memory_table[0][file] = cache_file_info->cache_backup_memory;
 	cache_info->fd_table[0][file] = cache_file_info->fd;
 
         //printf("ssg_rank %d entered here checkpoint 1\n", cache_file_info->ssg_rank);
@@ -823,6 +851,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_mutex = cache_info->cache_mutex_table[0][file];
         cache_file_info->cache_offset_list = cache_info->cache_offset_list_table[0][file];
         cache_file_info->cache_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
+        cache_file_info->cache_backup_memory = cache_info->cache_backup_memory_table[0][file];
 
         cache_file_info->cache_block_reserved = cache_info->cache_block_reserve_table[0][file];
 
@@ -947,6 +976,7 @@ static void cache_init(Cache_info *cache_info) {
     cache_info->cache_timestamps = new std::map<std::string, double>;
     cache_info->fd_table = new std::map<std::string, int>;
     cache_info->cache_page_mutex_table = new std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*>;
+    cache_info->cache_backup_memory_table = new std::map<std::string, std::vector<char*>*>;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -1001,6 +1031,16 @@ static void cache_finalize(Cache_info *cache_info) {
         }
         delete it10->second;
     }
+
+    std::map<std::string, std::vector<char*>*>::iterator it11;
+    std::vector<char*>::iterator it12;
+    for (it11 = cache_info->cache_backup_memory_table->begin(); it11 != cache_info->cache_backup_memory_table->end(); ++it11) {
+        for ( it12 = it11->second->begin(); it12 != it11->second->end(); ++it12 ) {
+            free(*it12);
+        }
+        delete it11->second;
+    }
+    delete cache_info->cache_backup_memory_table;
 
     #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -1108,7 +1148,8 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
 
         //Remove memory and table entry
         if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
-            free(cache_file_info->cache_table[0][cache_offset]->second);
+            //free(cache_file_info->cache_table[0][cache_offset]->second);
+            cache_free(cache_file_info->cache_backup_memory, cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
         } else {
@@ -1274,10 +1315,11 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
             cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
             // We prevent caching subblock region that can exceed current stripe.
-            cache_size2 = MIN(cache_size, stripe_size - cache_offset);
+            cache_size2 = MIN(cache_size, stripe_size - cache_offset % stripe_size);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            cache_file_info->cache_table[0][cache_offset]->second = cache_malloc(cache_file_info->cache_backup_memory, cache_size);
+            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
             test_sum++;
             if ( test_max < cache_size2 ) {
@@ -1508,6 +1550,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
     uint64_t remaining_file_size = file_size;
     int stripe_count, stripe_size;
     unsigned j;
+    printf("entering obsolete function cache_fetch_match!!!!!!!!!!!");
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -2433,11 +2476,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         }
         cache_file_info.file_size = max_off - min_off;
 */
-        cache_request_counter(cache_info, file_sizes);
         cache_register_lock(cache_info, file ,&cache_file_info);
 
         struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info, total_io_amount);
         #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_request_counter(cache_info, file_sizes);
         cache_file_info.thread_mutex = &(args.mutex);
         #endif
 
@@ -2468,14 +2511,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             int page_index = 0, previous = 0;
 
             while (page_index < pages->size()) {
-/*
+
                 ABT_mutex_create(&args.mutex);
                 ABT_eventual_create(0, &args.eventual);
                 reset_args(&args);
-*/
+
                 // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
                 page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
-/*
+
                 for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
                     total_io_amount += cache_file_info.file_sizes[0][j];
                 }
@@ -2494,10 +2537,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 ABT_eventual_wait(args.eventual, NULL);
 
                 ABT_eventual_free(&args.eventual);
-*/
+
                 cache_page_deregister2(&cache_file_info, pages, previous, page_index);
                 previous = page_index;
-                break;
             }
 
 
@@ -2505,7 +2547,6 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             delete cache_file_info.file_sizes;
 
         } else {
-            printf("should not even be here\n");
             cache_file_info.file_starts = new std::vector<off_t>(file_starts.size());
             cache_file_info.file_sizes = new std::vector<uint64_t>(file_sizes.size());
             for ( i = 0; i < file_starts.size(); ++i ) {
@@ -2547,14 +2588,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #endif
         local_stats.write_response = ABT_get_wtime();
         //printf("responded with value %llu\n", (long long unsigned)args.client_cursor);
-        //req.respond(args.client_cursor);
-
+        req.respond(args.client_cursor);
+/*
         total_io_amount = 0;
         for ( i = 0; i < file_sizes.size(); ++i ) {
             total_io_amount += file_sizes[i];
         }
         req.respond(total_io_amount);
-
+*/
         local_stats.write_response = ABT_get_wtime() - local_stats.write_response;
 
         local_stats += args.stats;
@@ -2892,7 +2933,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16834;
             }
             test_sum = 0;
             test_max = 0;
