@@ -1279,9 +1279,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
-            if (cache_file_info->cache_table->size() > test_sum) {
-                test_sum = cache_file_info->cache_table->size();
-            }
+            test_sum++;
             if ( test_max < cache_size2 ) {
                 test_max = cache_size2;
             }
@@ -2894,14 +2892,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 8388608;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
             }
             test_sum = 0;
             test_max = 0;
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v9, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v1, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
