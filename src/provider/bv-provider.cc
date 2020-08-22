@@ -971,7 +971,6 @@ static void cache_finalize(Cache_info *cache_info) {
     for ( it = cache_info->cache_table->begin(); it != cache_info->cache_table->end(); ++it ) {
         std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
         for ( it2 = it->second->begin(); it2 != it->second->end(); ++it2 ) {
-            test_max++;
             free(it2->second->second);
             delete it2->second;
         }
@@ -1113,7 +1112,6 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
             free(cache_file_info->cache_table[0][cache_offset]->second);
             delete cache_file_info->cache_table[0][cache_offset];
             cache_file_info->cache_table->erase(cache_offset);
-            test_max++;
         } else {
             printf("cache table is empty !!!!!!!!!!!\n");
         }
@@ -2900,7 +2898,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v1, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v7, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
