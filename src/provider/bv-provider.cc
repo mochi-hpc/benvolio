@@ -394,7 +394,6 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
     std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_info->cache_table[0][file];
     for ( it2 = cache_file_table->begin(); it2 != cache_file_table->end(); ++it2 ) {
-        test_max++;
         free(it2->second->second);
         delete it2->second;
     }
@@ -972,7 +971,6 @@ static void cache_finalize(Cache_info *cache_info) {
     for ( it = cache_info->cache_table->begin(); it != cache_info->cache_table->end(); ++it ) {
         std::map<off_t, std::pair<uint64_t, char*>*>::iterator it2;
         for ( it2 = it->second->begin(); it2 != it->second->end(); ++it2 ) {
-            test_max++;
             free(it2->second->second);
             delete it2->second;
         }
@@ -1069,7 +1067,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
     #if BENVOLIO_CACHE_STATISTICS == 1
     double time = ABT_get_wtime();
     #endif
-/*
+
     for ( it = cache_offsets->begin(); it != cache_offsets->end(); ++it ) {
         cache_offset = *it;
         if (cache_file_info->cache_update_list->find(cache_offset) != cache_file_info->cache_update_list->end()) {
@@ -1097,10 +1095,10 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
     if (write_ops->size() ) {
         it2 = write_ops->begin();
     }
-*/
+
     for ( i = 0; i < cache_offsets->size(); ++i ) {
         cache_offset = cache_offsets[0][i];
-/*
+
         if (cache_file_info->cache_update_list->find(cache_offset) != cache_file_info->cache_update_list->end()) {
             cache_file_info->cache_update_list->erase(cache_offset);
             write_op = *it2;
@@ -1108,7 +1106,7 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
             abt_io_op_free(write_op);
             it2++;
         }
-*/
+
         //Remove memory and table entry
         if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
             free(cache_file_info->cache_table[0][cache_offset]->second);
@@ -1277,12 +1275,14 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, off_t file_s
             /* This is the first time this cache block is accessed, we allocate memory and fetch the entire stripe to our memory*/
             cache_file_info->cache_table[0][cache_offset] = new std::pair<uint64_t, char*>;
             // We prevent caching subblock region that can exceed current stripe.
-            cache_size2 = MIN(cache_size, stripe_size - i * cache_size);
+            cache_size2 = MIN(cache_size, stripe_size - cache_offset);
 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
-            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
-            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
-            test_sum++;
+            cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
+            //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * 65536);
+            if (cache_file_info->cache_table->size() > test_sum) {
+                test_sum = cache_file_info->cache_table->size();
+            }
             if ( test_max < cache_size2 ) {
                 test_max = cache_size2;
             }
@@ -2895,14 +2895,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
             } else {
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 65536;
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 1048576;
             }
             test_sum = 0;
             test_max = 0;
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v8, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v9, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
