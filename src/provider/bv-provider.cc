@@ -2964,13 +2964,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MAX_N_BLOCKS"));
             } else {
-                BENVOLIO_CACHE_MAX_N_BLOCKS = 256;
+                BENVOLIO_CACHE_MAX_N_BLOCKS = 16;
             }
             p = getenv("BENVOLIO_CACHE_MIN_N_BLOCKS");
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MIN_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MIN_N_BLOCKS"));
             } else {
-                BENVOLIO_CACHE_MIN_N_BLOCKS = 256;
+                BENVOLIO_CACHE_MIN_N_BLOCKS = 16;
             }
             p = getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE");
             if ( p != NULL ) {
