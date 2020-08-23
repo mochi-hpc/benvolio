@@ -85,7 +85,7 @@ typedef struct {
     std::map<std::string, int> *cache_block_reserve_table;
     std::map<std::string, double> *cache_timestamps;
     std::map<std::string, int> *fd_table;
-    std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*> *cache_page_mutex_table;
+    std::map<std::string, std::map<off_t, int>*> *cache_page_refcount_table;
     std::map<std::string, std::vector<char*>*> *cache_backup_memory_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -129,7 +129,7 @@ typedef struct Cache_file_info{
     std::map<off_t, std::pair<uint64_t, char*>> *cache_page_table;
     /* The order of cache blocks fetched. When we flush a block, it starts from the first element of the list*/
     std::vector<off_t>* cache_offset_list;
-    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_page_mutex_table;
+    std::map<off_t, int> *cache_page_refcount_table;
     std::vector<char*>* cache_backup_memory;
     std::vector<uint64_t> *file_sizes;
     std::vector<off_t> *file_starts;
@@ -413,26 +413,18 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
         free(*it3);
     }
 
-    std::map<off_t, std::pair<int, tl::mutex*>*> *cache_file_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
-    std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
-    for (it11 = cache_file_page_mutex_table->begin(); it11 != cache_file_page_mutex_table->end(); ++it11) {
-        if (it11->second->first) {
-            printf("critical error detected !!!!!!!!!\n");
-        }
-        delete it11->second->second;
-        delete it11->second;
-    }
+    std::map<off_t, int> *cache_file_page_refcount_table = cache_info->cache_page_refcount_table[0][file];
 
     delete cache_backup_memory;
     delete cache_file_table;
     delete cache_info->cache_update_table[0][file];
     delete cache_info->cache_mutex_table[0][file];
-    delete cache_file_page_mutex_table;
+    delete cache_file_page_refcount_table;
     delete cache_info->cache_offset_list_table[0][file];
 
     cache_info->cache_table->erase(file);
     cache_info->cache_mutex_table->erase(file);
-    cache_info->cache_page_mutex_table->erase(file);
+    cache_info->cache_page_refcount_table->erase(file);
     cache_info->cache_update_table->erase(file);
     cache_info->cache_offset_list_table->erase(file);
     cache_info->cache_block_used[0] -= cache_info->cache_block_reserve_table[0][file];
@@ -579,7 +571,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, const std::vec
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
-            if (cache_file_info->cache_page_mutex_table[0][flush_offset]->first == 0) {
+            if (cache_file_info->cache_page_refcount_table[0][flush_offset] == 0) {
                 flush_offsets->push_back(flush_offset);
                 if ( flush_offsets->size() == remove_counter ) {
                     break;
@@ -614,7 +606,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, const std::vec
     /* Remeber this cache_page_table is cleared inside cache_page_deregister2. Hence whatever is currently in cache_page_table should be what we are using in this register function. */
     std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
     for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
-        cache_file_info->cache_page_mutex_table[0][it3->first]->first++;
+        cache_file_info->cache_page_refcount_table[0][it3->first]++;
     }
     return page_index;
 }
@@ -628,7 +620,7 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, const std::
     unsigned i;
     std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
     for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
-        cache_file_info->cache_page_mutex_table[0][it3->first]->first--;
+        cache_file_info->cache_page_refcount_table[0][it3->first]--;
     }
     cache_file_info->cache_page_table->clear();
 }
@@ -724,7 +716,7 @@ static void cache_page_register(Cache_file_info *cache_file_info, const std::vec
         }
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
-            cache_file_info->cache_page_mutex_table[0][it->first]->first++;
+            cache_file_info->cache_page_refcount_table[0][it->first]++;
         }
 
     }
@@ -751,7 +743,7 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
         off_t cache_offset;
         std::map<off_t, std::pair<uint64_t, char*>>::iterator it;
         for ( it = cache_file_info->cache_page_table->begin(); it != cache_file_info->cache_page_table->end(); ++it ) {
-            cache_file_info->cache_page_mutex_table[0][it->first]->first--;
+            cache_file_info->cache_page_refcount_table[0][it->first]--;
         }
 
     }
@@ -778,7 +770,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_update_list = new std::set<off_t>;
         cache_file_info->cache_mutex = new tl::mutex;
         cache_file_info->cache_offset_list = new std::vector<off_t>;
-        cache_file_info->cache_page_mutex_table = new std::map<off_t, std::pair<int, tl::mutex*>*>;
+        cache_file_info->cache_page_refcount_table = new std::map<off_t, int>;
         cache_file_info->cache_backup_memory = new std::vector<char*>;
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
@@ -804,7 +796,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_info->cache_mutex_table[0][file] = cache_file_info->cache_mutex;
         cache_info->cache_offset_list_table[0][file] = cache_file_info->cache_offset_list;
         cache_info->cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
-        cache_info->cache_page_mutex_table[0][file] = cache_file_info->cache_page_mutex_table;
+        cache_info->cache_page_refcount_table[0][file] = cache_file_info->cache_page_refcount_table;
         cache_info->cache_backup_memory_table[0][file] = cache_file_info->cache_backup_memory;
 	cache_info->fd_table[0][file] = cache_file_info->fd;
 
@@ -840,7 +832,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_update_list = cache_info->cache_update_table[0][file];
         cache_file_info->cache_mutex = cache_info->cache_mutex_table[0][file];
         cache_file_info->cache_offset_list = cache_info->cache_offset_list_table[0][file];
-        cache_file_info->cache_page_mutex_table = cache_info->cache_page_mutex_table[0][file];
+        cache_file_info->cache_page_refcount_table = cache_info->cache_page_refcount_table[0][file];
         cache_file_info->cache_backup_memory = cache_info->cache_backup_memory_table[0][file];
 
         cache_file_info->cache_block_reserved = cache_info->cache_block_reserve_table[0][file];
@@ -965,7 +957,7 @@ static void cache_init(Cache_info *cache_info) {
     cache_info->cache_mutex = new tl::mutex;
     cache_info->cache_timestamps = new std::map<std::string, double>;
     cache_info->fd_table = new std::map<std::string, int>;
-    cache_info->cache_page_mutex_table = new std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*>;
+    cache_info->cache_page_refcount_table = new std::map<std::string, std::map<off_t, int>*>;
     cache_info->cache_backup_memory_table = new std::map<std::string, std::vector<char*>*>;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -1009,16 +1001,8 @@ static void cache_finalize(Cache_info *cache_info) {
         delete it5->second;
     }
 
-    std::map<std::string, std::map<off_t, std::pair<int, tl::mutex*>*>*>::iterator it10;
-    for (it10 = cache_info->cache_page_mutex_table->begin(); it10 != cache_info->cache_page_mutex_table->end(); ++it10) {
-        std::map<off_t, std::pair<int, tl::mutex*>*>::iterator it11;
-        for (it11 = it10->second->begin(); it11 != it10->second->end(); ++it11) {
-            if (it11->second->first) {
-                printf("critical error detected !!!!!!!!!\n");
-            }
-            delete it11->second->second;
-            delete it11->second;
-        }
+    std::map<std::string, std::map<off_t, int>*>::iterator it10;
+    for (it10 = cache_info->cache_page_refcount_table->begin(); it10 != cache_info->cache_page_refcount_table->end(); ++it10) {
         delete it10->second;
     }
 
@@ -1137,29 +1121,15 @@ static void cache_flush_array(Cache_file_info *cache_file_info, const std::vecto
         }
 
         //Remove memory and table entry
-        if ( cache_file_info->cache_table->find(cache_offset) != cache_file_info->cache_table->end() ) {
-            //free(cache_file_info->cache_table[0][cache_offset]->second);
-            cache_free(cache_file_info->cache_backup_memory, cache_file_info->cache_table[0][cache_offset]->second);
-            delete cache_file_info->cache_table[0][cache_offset];
-            cache_file_info->cache_table->erase(cache_offset);
-        } else {
-            printf("cache table is empty !!!!!!!!!!!\n");
-        }
-        
-        if ( cache_file_info->cache_page_mutex_table->find(cache_offset) != cache_file_info->cache_page_mutex_table->end() ) {
-            delete cache_file_info->cache_page_mutex_table[0][cache_offset]->second;
-            delete cache_file_info->cache_page_mutex_table[0][cache_offset];
-            cache_file_info->cache_page_mutex_table->erase(cache_offset);
-        } else {
-            printf("cache mutex table is empty !!!!!!!!!!!\n");
-        }
+        //free(cache_file_info->cache_table[0][cache_offset]->second);
+        cache_free(cache_file_info->cache_backup_memory, cache_file_info->cache_table[0][cache_offset]->second);
+        delete cache_file_info->cache_table[0][cache_offset];
+        cache_file_info->cache_table->erase(cache_offset);
+
+        cache_file_info->cache_page_refcount_table->erase(cache_offset);
 
         std::vector<off_t>::iterator it3 = std::find(cache_file_info->cache_offset_list->begin(), cache_file_info->cache_offset_list->end(), cache_offset);
-        if (it3!=cache_file_info->cache_offset_list->end()) {
-             cache_file_info->cache_offset_list->erase(it3);
-        } else {
-            printf("cache offset list is empty !!!!!!!!!!!\n");
-        }
+        cache_file_info->cache_offset_list->erase(it3);
     }
     delete write_ops;
 
@@ -1324,9 +1294,7 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, const off_t 
             // This region is the maximum possible cache, we may not necessarily use all of it, but we can adjust size later without realloc.
             cache_file_info->cache_table[0][cache_offset]->second = cache_malloc(cache_file_info->cache_backup_memory, cache_size);
             //Register cache page lock
-            cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
-            cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+            cache_file_info->cache_page_refcount_table[0][cache_offset] = 0;
 
             //printf("ssg_rank = %d creating cache offset = %llu of size %ld\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset, cache_size2);
             //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
@@ -1617,7 +1585,7 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
                 std::vector<off_t>::iterator it2 = cache_file_info->cache_offset_list->begin();
                 while (it2 != cache_file_info->cache_offset_list->end()) {
                     flush_offset = *it2;
-                    if (!cache_file_info->cache_page_mutex_table[0][flush_offset]->first) {
+                    if (!cache_file_info->cache_page_refcount_table[0][flush_offset]) {
                         flush_offsets->push_back(flush_offset);
                         //it2 = cache_file_info->cache_offset_list->erase(it2);
                         if (flush_offsets->size() + cache_file_info->cache_block_reserved > cache_file_info->cache_offset_list->size() ) {
@@ -1662,11 +1630,9 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
             //cache_file_info->cache_table[0][cache_offset]->second = (char*) malloc(sizeof(char) * cache_size2);
             cache_file_info->cache_table[0][cache_offset]->second = cache_malloc(cache_file_info->cache_backup_memory, cache_size);
 
-            if (cache_file_info->cache_page_mutex_table->find(cache_offset) == cache_file_info->cache_page_mutex_table->end()) {
+            if (cache_file_info->cache_page_refcount_table->find(cache_offset) == cache_file_info->cache_page_refcount_table->end()) {
                 //Register cache page lock
-                cache_file_info->cache_page_mutex_table[0][cache_offset] = new std::pair<int, tl::mutex*>;
-                cache_file_info->cache_page_mutex_table[0][cache_offset]->first = 0;
-                cache_file_info->cache_page_mutex_table[0][cache_offset]->second = new tl::mutex;
+                cache_file_info->cache_page_refcount_table[0][cache_offset] = 0;
                 //printf("ssg_rank = %d creating cache offset = %llu\n", cache_file_info->ssg_rank, (long long unsigned) cache_offset);
             }
 
@@ -2983,7 +2949,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v1, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v2, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
