@@ -1548,7 +1548,6 @@ static size_t cache_match_lock_free(char* local_buf, Cache_file_info *cache_file
         #endif
     }
     #if BENVOLIO_CACHE_STATISTICS == 1
-    time = ABT_get_wtime();
     ABT_mutex_lock(cache_file_info->thread_mutex[0]);
     cache_file_info->cache_stat->cache_match_time += time - total_time2;
     ABT_mutex_unlock(cache_file_info->thread_mutex[0]);
@@ -3005,13 +3004,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MAX_N_BLOCKS"));
             } else {
-                BENVOLIO_CACHE_MAX_N_BLOCKS = 16;
+                BENVOLIO_CACHE_MAX_N_BLOCKS = 256;
             }
             p = getenv("BENVOLIO_CACHE_MIN_N_BLOCKS");
             if ( p != NULL ) {
                 BENVOLIO_CACHE_MIN_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MIN_N_BLOCKS"));
             } else {
-                BENVOLIO_CACHE_MIN_N_BLOCKS = 16;
+                BENVOLIO_CACHE_MIN_N_BLOCKS = 256;
             }
             p = getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE");
             if ( p != NULL ) {
@@ -3026,7 +3025,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v7, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v1, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
