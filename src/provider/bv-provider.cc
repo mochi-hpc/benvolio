@@ -39,8 +39,8 @@
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 0
-#define BENVOLIO_CACHE_STATISTICS_DETAILED 0
+#define BENVOLIO_CACHE_STATISTICS 1
+#define BENVOLIO_CACHE_STATISTICS_DETAILED 1
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
 
@@ -2623,10 +2623,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         time = ABT_get_wtime();
         #endif
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
-        cache_deregister_lock(cache_info, file, &cache_file_info);
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
         #endif
+        // cache_file_info is no longer valid after deregister
+        cache_deregister_lock(cache_info, file, &cache_file_info);
 
         #else
         ABT_mutex_create(&args.mutex);
@@ -2853,10 +2854,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         time = ABT_get_wtime();
         #endif
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
-        cache_deregister_lock(cache_info, file, &cache_file_info);
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
         #endif
+        // cache_file_info is no longer valid after deregister
+        cache_deregister_lock(cache_info, file, &cache_file_info);
 
         #else
         ABT_mutex_create(&args.mutex);
@@ -3024,7 +3026,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("implementation version v6, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("implementation version v7, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
