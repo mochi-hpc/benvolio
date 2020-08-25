@@ -72,7 +72,7 @@ arguments are mandatory.
   * `-s streams`    : how many margo streams (Argobot Execution Streams) to use
 
 
-    $ prun -np 2 ./src/provider/bv-server -f bv.svc -p sm:  &
+    $ prun -np 2 ./src/provider/bv-server.pmix -f bv.svc -p sm:  &
 
 #### Provider with MPI
 
@@ -83,7 +83,7 @@ more apropriate mechanism
 
 2. The command line arguments for `bv-server` are the same no matter how you launch the providers.
 
-    $ mpiexec -np 2 ./src/provider/bv-server -f bv.svc -p sm: &
+    $ mpiexec -np 2 ./src/provider/bv-server.mpi -f bv.svc -p sm: &
 
 #### Client
 
