@@ -116,11 +116,10 @@ will also emit information from all benvolio providers.
 
 Here's an example of the output:
 
-    SERVER: write_rpc_calls 2 write_rpc_time 0.0026474 server_write_calls 5 server_write_time 0.00186205 bytes_written 15011 write_expose 0 write_bulk_time 4.02927e-05 write_bulk_xfers 2 write_response 4.36306e-05 read_rpc_calls 2 read_rpc_time 0.0026679 server_read_calls 7 serve
-r_read_time 0.00181675 bytes_read 15006 read_bulk_time 5.31673e-05 read_bulk_xfers 2 read_expose 0 read_response 4.41074e-05 getfd 0.00121784 mutex_time 9.53674e-07
+    SERVER: write_rpc_calls 2 write_rpc_time 0.0026474 server_write_calls 5 server_write_time 0.00186205 bytes_written 15011 write_expose 0 write_bulk_time 4.02927e-05 write_bulk_xfers 2 write_response 4.36306e-05 read_rpc_calls 2 read_rpc_time 0.0026679 server_read_calls 7 server_read_time 0.00181675 bytes_read 15006 read_bulk_time 5.31673e-05 read_bulk_xfers 2 read_expose 0 read_response 4.41074e-05 getfd 0.00121784 mutex_time 9.53674e-07
     CLIENT: client_write_calls 2 client_write_time 0.00291276 client_bytes_written 15011 client_read_calls 2 client_read_time 0.0028851 client_bytes_read 15006 client_init_time 0.0610526
 
-In the above sample output, one can subtrace (server) `write_rpc_time` from
+In the above sample output, one can subtract (server) `write_rpc_time` from
 (client) `client_write_time` to compute the RPC overhead.  Typically this
 number will be quite small but could be large if for some reason the server was
 unable to handle client requests efficiently (maybe requires more margo
