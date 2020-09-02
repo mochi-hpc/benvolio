@@ -6,6 +6,7 @@ class io_stats {
 	    getfd(0),
             server_write_calls(0), server_write_time(0.0),
 	    bytes_written(0),
+            client_write_expose(0.0), client_read_expose(0.0),
             server_read_calls(0), server_read_time(0.0), bytes_read(0),
 	    write_bulk_time(0.0), write_bulk_xfers(0),
             read_bulk_time(0.0), read_bulk_xfers(0),
@@ -14,10 +15,15 @@ class io_stats {
 	    mutex_time(0.0),
             client_write_calls(0), client_write_time(0.0),
 	    client_bytes_written(0),
-            client_write_expose(0.0), client_read_expose(0.0),
 	    client_read_calls(0), client_read_time(0.0),
 	    client_bytes_read(0),
-	    client_init_time(0.0)
+	    client_init_time(0.0),
+            client_write_calc_striping_time(0.0),
+            client_write_calc_request_time(0.0),
+            client_write_post_request_time1(0.0),
+            client_write_post_request_time2(0.0),
+            client_write_wait_request_time(0.0)
+            
     {};
 
     template<typename A> void serialize(A &ar) {
@@ -88,6 +94,13 @@ class io_stats {
     double client_read_expose;  // time spent registering memory before reading
 
 
+    double client_write_calc_striping_time;
+    double client_write_calc_request_time;
+    double client_write_post_request_time1;
+    double client_write_post_request_time2;
+    double client_write_wait_request_time;
+
+
     io_stats  & operator += (const io_stats &rhs) {
 	write_rpc_calls += rhs.write_rpc_calls;
 	write_rpc_time += rhs.write_rpc_time;
@@ -118,6 +131,11 @@ class io_stats {
 	client_read_calls += rhs.client_read_calls;
 	client_read_time += rhs.client_read_time;
 	client_init_time += rhs.client_init_time;
+	client_write_calc_striping_time += rhs.client_write_calc_striping_time;
+	client_write_calc_request_time += rhs.client_write_calc_request_time;
+	client_write_post_request_time1 += rhs.client_write_post_request_time1;
+	client_write_post_request_time2 += rhs.client_write_post_request_time2;
+	client_write_wait_request_time += rhs.client_write_wait_request_time;
 
 	return *this;
     }
@@ -154,6 +172,11 @@ class io_stats {
 	    << " client_bytes_read " << client_bytes_read
             << " client_read_expose_time " << client_read_expose
             << " client_init_time " << client_init_time
+            << " client_write_calc_striping_time " << client_write_calc_striping_time
+            << " client_write_calc_request_time " << client_write_calc_request_time
+            << " client_write_post_request_time1 " << client_write_post_request_time1
+            << " client_write_post_request_time2 " << client_write_post_request_time2
+            << " client_write_wait_request_time " << client_write_wait_request_time
             << std::endl;
     }
     void print(void) {
