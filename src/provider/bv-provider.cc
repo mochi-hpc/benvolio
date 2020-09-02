@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <libgen.h>
 #include <string.h>
+#include <set>
 
 #include <margo.h>
 #include <margo-bulk-pool.h>
@@ -27,7 +28,8 @@
 #include "file_stats.h"
 
 #include "lustre-utils.h"
-namespace tl = thallium;
+
+#include "bv-cache.h"
 
 struct file_info {
     int fd;
@@ -55,10 +57,16 @@ struct io_args {
     int ret;
     /* statistics collection */
     io_stats stats;
+    size_t total_io_amount;
+
+    #if BENVOLIO_CACHE_ENABLE == 1
+    Cache_file_info *cache_file_info;
 
     io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
             const std::vector<off_t> & start_vec,
-            const std::vector<uint64_t> & size_vec) :
+            const std::vector<uint64_t> & size_vec,
+            Cache_file_info *cache_file_i,
+            size_t total_io_a) :
         engine(eng),
         ep(e),
         abt_id(id),
@@ -67,9 +75,36 @@ struct io_args {
         mr_pool(p),
         xfersize(x),
         file_starts(start_vec),
-        file_sizes(size_vec) {};
+        file_sizes(size_vec),
+        cache_file_info(cache_file_i),
+        total_io_amount(total_io_a){};
+    #else
+    io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
+            const std::vector<off_t> & start_vec,
+            const std::vector<uint64_t> & size_vec,
+            size_t total_io_a) :
+        engine(eng),
+        ep(e),
+        abt_id(id),
+        fd(f),
+        client_bulk(b),
+        mr_pool(p),
+        xfersize(x),
+        file_starts(start_vec),
+        file_sizes(size_vec),
+        total_io_amount(total_io_a){};
+    #endif
 
 };
+
+void reset_args(struct io_args *args) {
+    args->done=0;
+    args->file_idx=0;
+    args->fileblk_cursor=0;
+    //args->client_cursor=0;
+    args->xfered=0;
+    args->ults_active=0;
+}
 
 /* file_starts: [in] list of starting offsets in file
  * file_sizes: [in] list of blocksizes in file
@@ -118,6 +153,7 @@ static size_t calc_offsets(const std::vector<off_t> & file_starts,
 
     return xfered;
 }
+
 static void write_ult(void *_args)
 {
     int turn_out_the_lights = 0;  /* only set if we determine all threads are done */
@@ -131,8 +167,17 @@ static void write_ult(void *_args)
     size_t fileblk_cursor;
     double mutex_time;
 
-    while (args->client_cursor < args->client_bulk.size() && file_idx < args->file_starts.size() )
+    #if BENVOLIO_CACHE_ENABLE == 1
+    const std::vector<off_t> file_starts = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_starts): args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
+    #else
+    const std::vector<off_t> file_starts = args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    #endif
+
+    while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
     {
+        //printf("entered loop with client_cursor = %ld, total_io_amount == %ld, file_idx = %ld, file_starts.size() = %ld\n", args->client_cursor, args->total_io_amount, file_idx, file_starts.size());
         void *local_buffer;
         size_t local_bufsize;
         size_t buf_cursor=0;
@@ -173,13 +218,16 @@ static void write_ult(void *_args)
          * state and drop the lock */
         unsigned int new_file_idx;
         size_t new_file_cursor;
-        client_xfer = calc_offsets(args->file_starts, args->file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
+        client_xfer = calc_offsets(file_starts, file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
                 &new_file_idx, &new_file_cursor);
 
         /* this seems wrong... we check the 'args' struct at top of loop, but
          * also update it inside the loop.  So for whatever reason the loop
          * thought we had more work to do but then it turns out we did not */
         if (client_xfer == 0)  {
+            //printf("file idx = %ld, fileblk_cursor = %ld, local_buf_size = %ld\n", args->file_idx, args->fileblk_cursor, local_bufsize);
+            //sleep(1);
+            //file_idx = new_file_idx;
             ABT_mutex_unlock(args->mutex);
             margo_bulk_pool_release(args->mr_pool, local_bulk);
             continue;
@@ -188,7 +236,6 @@ static void write_ult(void *_args)
         args->file_idx = new_file_idx;
         args->fileblk_cursor = new_file_cursor;
         args->client_cursor += client_xfer;
-
 
         // --------------------- args->mutex released ----------------//
         ABT_mutex_unlock(args->mutex);
@@ -207,11 +254,11 @@ static void write_ult(void *_args)
         // - select a subset on the client-side bulk descriptor before
         //   associating it with a connection.
         try {
-            client_xfer = args->client_bulk(client_cursor, args->client_bulk.size()-client_cursor).on(args->ep) >> local;
+            client_xfer = args->client_bulk(client_cursor, args->total_io_amount-client_cursor).on(args->ep) >> local;
         } catch (const tl::margo_exception &err) {
             std::cerr <<"Unable to bulk get at "
                 << client_cursor << " size: "
-                << args->client_bulk.size()-client_cursor << std::endl;
+                << args->total_io_amount-client_cursor << std::endl;
         } catch (const tl::exception &err) {
             std::cerr << "General thallium error " << std::endl;
         } catch (...) {
@@ -223,20 +270,40 @@ static void write_ult(void *_args)
         // - what if the client has a really long file descripton but for some reason only a small amount of memory?
         // - what if the client has a really large amount of memory but a short file description?
         // -- write returns the smaller of the two
+        #if BENVOLIO_CACHE_ENABLE == 0
         std::list<abt_io_op_t *> ops;
         std::list<ssize_t> rets;
+        #endif
         io_time = ABT_get_wtime();
-        while (file_idx < args->file_starts.size() && issued < local_bufsize) {
+        while (file_idx < file_starts.size() && issued < local_bufsize) {
             // we might be able to only write a partial block
-            rets.push_back(-1);
-            nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
-            abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
+            //rets.push_back(-1);
+            nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, client_xfer-buf_cursor);
+
+            #if BENVOLIO_CACHE_ENABLE == 1
+
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            double time = ABT_get_wtime();
+            #endif
+            file_xfer += cache_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            ABT_mutex_lock(args->mutex);
+            args->cache_file_info->cache_stat->cache_total_time += ABT_get_wtime() - time;
+            ABT_mutex_unlock(args->mutex);
+            #endif
+
+            //file_xfer += cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+
+            #else
+            abt_io_op_t * write_op = abt_io_pwrite_nb(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor, &(rets.back()) );
             ops.push_back(write_op);
+            #endif
+
             issued += nbytes;
             
             write_count++;
 
-            if (nbytes + fileblk_cursor >= args->file_sizes[file_idx]) {
+            if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                 file_idx++;
                 fileblk_cursor = 0;
             }
@@ -250,6 +317,7 @@ static void write_ult(void *_args)
 
             xfered += nbytes;
         }
+        #if BENVOLIO_CACHE_ENABLE == 0
         for (auto x : ops) {
             abt_io_op_wait(x);
             abt_io_op_free(x);
@@ -261,6 +329,7 @@ static void write_ult(void *_args)
             file_xfer += x;
         ops.clear();
         rets.clear();
+        #endif
         //fprintf(stderr, "   SERVER: ABT-IO POOL: %ld items\n", abt_io_get_pool_size(args->abt_id));
 
         client_cursor += client_xfer;
@@ -274,6 +343,8 @@ static void write_ult(void *_args)
         args->stats.bytes_written += file_xfer;
         ABT_mutex_unlock(args->mutex);
     }
+
+    /*Write-back the cache blocks.*/
 
     ABT_mutex_lock(args->mutex);
     args->ults_active--;
@@ -294,11 +365,19 @@ static void read_ult(void *_args)
 {
     int turn_out_the_lights = 0;  /* only set if we determine all threads are done */
     struct io_args *args = (struct io_args *)_args;
-    size_t client_xfer=0, client_cursor=0;
+    size_t client_xfer=0, client_cursor=0 ,temp;
     unsigned int file_idx=0;
     size_t fileblk_cursor;
 
-    while (args->client_cursor < args->client_bulk.size() && file_idx < args->file_starts.size() )
+    #if BENVOLIO_CACHE_ENABLE == 1
+    const std::vector<off_t> file_starts = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_starts): args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
+    #else
+    const std::vector<off_t> file_starts = args->file_starts;
+    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    #endif
+
+    while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
     {
         void *local_buffer;
         size_t local_bufsize;
@@ -334,7 +413,7 @@ static void read_ult(void *_args)
 
         /* figure out what we would have done so we can update shared 'arg'
          * state and drop the lock */
-        client_xfer = calc_offsets(args->file_starts, args->file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
+        client_xfer = calc_offsets(file_starts, file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
                 &new_file_idx, &new_file_cursor);
 
         if (client_xfer == 0)  {
@@ -352,20 +431,31 @@ static void read_ult(void *_args)
         fileblk_cursor = first_file_cursor;
 
         // see write_ult for more discussion of when we stop processing
-        while (file_idx < args->file_starts.size() && file_xfer < local_bufsize) {
+        while (file_idx < file_starts.size() && file_xfer < local_bufsize) {
 
             // we might be able to only write a partial block
             // 'local_bufsize' here instead of 'client_xfer' because we are
             // filling the local memory buffer first and then doing the rma put
-            nbytes = MIN(args->file_sizes[file_idx]-fileblk_cursor, local_bufsize-buf_cursor);
+            nbytes = MIN(file_sizes[file_idx]-fileblk_cursor, local_bufsize-buf_cursor);
 
             io_time = ABT_get_wtime();
-            file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, args->file_starts[file_idx]+fileblk_cursor);
+            #if BENVOLIO_CACHE_ENABLE == 1
+            //temp = cache_fetch_match((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            temp = cache_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
+            #if BENVOLIO_CACHE_STATISTICS == 1
+            ABT_mutex_lock(args->mutex);
+            args->cache_file_info->cache_stat->cache_total_time += ABT_get_wtime() - io_time;
+            ABT_mutex_unlock(args->mutex);
+            #endif
+            file_xfer += temp;
+            #else
+            file_xfer += abt_io_pread(args->abt_id, args->fd, (char*)local_buffer+buf_cursor, nbytes, file_starts[file_idx]+fileblk_cursor);
+            #endif
             io_time = ABT_get_wtime()-io_time;
             total_io_time += io_time;
             read_count++;
 
-            if (nbytes + fileblk_cursor >= args->file_sizes[file_idx]) {
+            if (nbytes + fileblk_cursor >= file_sizes[file_idx]) {
                 file_idx++;
                 fileblk_cursor = 0;
             }
@@ -393,10 +483,10 @@ static void read_ult(void *_args)
 
         bulk_time = ABT_get_wtime();
         try {
-            client_xfer = args->client_bulk(client_cursor, args->client_bulk.size()-client_cursor).on(args->ep) << local;
+            client_xfer = args->client_bulk(client_cursor, args->total_io_amount-client_cursor).on(args->ep) << local;
         } catch (const tl::margo_exception &err) {
             std::cerr << "Unable to bulk put at " << client_cursor
-                << " size: " << args->client_bulk.size()-client_cursor
+                << " size: " << args->total_io_amount-client_cursor
                 << std::endl;
         } catch (const tl::exception &err) {
             std::cerr << "General thallium error " << std::endl;
@@ -447,9 +537,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     tl::mutex    stats_mutex;
     tl::mutex    size_mutex;
     tl::mutex    fd_mutex;
-
+    #if BENVOLIO_CACHE_ENABLE == 1
+    Cache_info *cache_info;
+    struct resource_manager_args rm_args;
+    int ssg_size, ssg_rank;
+    #endif
     /* handles to RPC objects so we can clean them up in destructor */
-   std::vector<tl::remote_procedure> rpcs;
+    std::vector<tl::remote_procedure> rpcs;
 
     // server will maintain a cache of open files
     // std::map not great for LRU
@@ -475,12 +569,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return fd;
     }
 
+
     /* write:
      * - bulk-get into a contig buffer
      * - write out to file */
     ssize_t process_write(const tl::request& req, tl::bulk &client_bulk, const std::string &file,
-            const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
+            const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
     {
+        unsigned i;
 	struct io_stats local_stats;
         double write_time = ABT_get_wtime();
 
@@ -507,25 +603,170 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	local_stats.getfd += getfd_time;
         if (fd < 0) return fd;
 
-        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
-        ABT_mutex_create(&args.mutex);
-        ABT_eventual_create(0, &args.eventual);
+
+        size_t total_io_amount = 0;
+        for ( i = 0; i < file_sizes.size(); ++i ) {
+            total_io_amount += file_sizes[i];
+        }
+        if ( total_io_amount > client_bulk.size() ) {
+            printf("critical error, request size is larger than bulk size.\n");
+        }
+
+        /* Process cache */
+        #if BENVOLIO_CACHE_ENABLE == 1
+        Cache_file_info cache_file_info;
+        cache_file_info.ssg_rank = ssg_rank;
+        cache_file_info.fd = fd;
+        cache_file_info.abt_id = abt_id;
+        cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
+        cache_file_info.stripe_count = stripe_count;
+        cache_file_info.stripe_size = stripe_size;
+/*
+        for ( i = 1; i < file_starts.size(); ++i ) {
+            if ( file_starts[i] < file_starts[i-1] ) {
+                printf("critical error, file offsets are not sorted\n");
+            }
+        }
+*/
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        double time;
+        cache_request_counter(cache_info, file_sizes);
+        #endif
+
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        cache_register_lock(cache_info, file ,&cache_file_info);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        #endif
+
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info, total_io_amount);
+
+        #else
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, total_io_amount);
+        #endif
 
         // ceiling division: we'll spawn threads to operate on the registered memory.
         // (intermediate) buffer.  If we run out of
         // file description, threads will bail out early
 
-        size_t ntimes = 1 + (client_bulk.size() -1)/xfersize;
+        //size_t ntimes = 1 + (client_bulk.size() -1)/xfersize;
+        #if BENVOLIO_CACHE_ENABLE == 1
+
+        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<off_t>*> *file_starts_array;
+        std::vector<off_t> *pages;
+
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        cache_page_register(&cache_file_info, file_starts, file_sizes, &file_starts_array, &file_sizes_array, &pages);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        cache_file_info.thread_mutex = &(args.mutex);
+        #endif
+        if (cache_file_info.cache_evictions) {
+            // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
+
+            cache_file_info.file_starts = new std::vector<off_t>;
+            cache_file_info.file_sizes = new std::vector<uint64_t>;
+
+            //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
+            total_io_amount = 0;
+            int page_index = 0;
+
+            while (page_index < pages->size()) {
+
+                ABT_mutex_create(&args.mutex);
+                ABT_eventual_create(0, &args.eventual);
+                reset_args(&args);
+
+                // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                time = ABT_get_wtime();
+                #endif
+                page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+                #endif
+
+                for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
+                    total_io_amount += cache_file_info.file_sizes[0][j];
+                }
+
+                args.total_io_amount = total_io_amount;
+                //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
+                size_t ntimes = 1 + (total_io_amount - 1)/xfersize;
+                //ntimes = 1;
+
+                args.ults_active=ntimes;
+                //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
+
+                for (unsigned int j = 0; j< ntimes; j++) {
+                    ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+                }
+                ABT_eventual_wait(args.eventual, NULL);
+
+                ABT_eventual_free(&args.eventual);
+
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                time = ABT_get_wtime();
+                #endif
+                cache_page_deregister2(&cache_file_info, pages);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+                #endif
+            }
+
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+
+        } else {
+            ABT_mutex_create(&args.mutex);
+            ABT_eventual_create(0, &args.eventual);
+
+            size_t ntimes = 1 + (total_io_amount -1)/xfersize;
+            args.ults_active=ntimes;
+            for (unsigned int i = 0; i< ntimes; i++) {
+                ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+            }
+            ABT_eventual_wait(args.eventual, NULL);
+            ABT_eventual_free(&args.eventual);
+        }
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        #endif
+        // cache_file_info is no longer valid after deregister
+        cache_deregister_lock(cache_info, file, &cache_file_info);
+
+        #else
+        ABT_mutex_create(&args.mutex);
+        ABT_eventual_create(0, &args.eventual);
+
+        size_t ntimes = 1 + (total_io_amount -1)/xfersize;
         args.ults_active=ntimes;
         for (unsigned int i = 0; i< ntimes; i++) {
             ABT_thread_create(pool.native_handle(), write_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
         }
         ABT_eventual_wait(args.eventual, NULL);
-
         ABT_eventual_free(&args.eventual);
-
+        #endif
         local_stats.write_response = ABT_get_wtime();
+        //printf("responded with value %llu\n", (long long unsigned)args.client_cursor);
         req.respond(args.client_cursor);
+/*
+        total_io_amount = 0;
+        for ( i = 0; i < file_sizes.size(); ++i ) {
+            total_io_amount += file_sizes[i];
+        }
+        req.respond(total_io_amount);
+*/
         local_stats.write_response = ABT_get_wtime() - local_stats.write_response;
 
         local_stats += args.stats;
@@ -546,8 +787,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
      * as with write, might require multiple bulk-puts to complete if read
      * request larger than buffer */
     ssize_t process_read(const tl::request &req, tl::bulk &client_bulk, const std::string &file,
-            std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes)
+            std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
     {
+        unsigned i;
 	struct io_stats local_stats;
         double read_time = ABT_get_wtime();
 
@@ -573,20 +815,169 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	local_stats.getfd += getfd_time;
         if (fd < 0) return fd;
 
-        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes);
+        size_t total_io_amount = 0;
+        for ( unsigned i = 0; i < file_sizes.size(); ++i ) {
+            total_io_amount += file_sizes[i];
+        }
+        if ( total_io_amount > client_bulk.size() ) {
+            printf("critical error, request size is larger than bulk size.\n");
+        }
+
+        /* Process cache */
+        #if BENVOLIO_CACHE_ENABLE == 1
+        Cache_file_info cache_file_info;
+        cache_file_info.ssg_rank = ssg_rank;
+        cache_file_info.fd = fd;
+        cache_file_info.abt_id = abt_id;
+        cache_file_info.io_type = BENVOLIO_CACHE_READ;
+        cache_file_info.stripe_count = stripe_count;
+        cache_file_info.stripe_size = stripe_size;
+
+        struct stat st;
+        if (stat(file.c_str(), &st) == 0) {
+            cache_file_info.file_size = st.st_size;
+        } else {
+            cache_file_info.file_size = 0;
+        }
+
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        double time;
+        cache_request_counter(cache_info, file_sizes);
+        time = ABT_get_wtime();
+        #endif
+        cache_register_lock(cache_info, file ,&cache_file_info);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        #endif
+        /* Simple detection for file offsets within currernt provider's file domain*/
+/*
+        unsigned i;
+        for ( i = 0; i < file_starts.size(); ++i ) {
+            if ( file_starts[i] + file_sizes[i] + 1 > cache_file_info.file_size ) {
+                //printf("read request beyond maximum file range file_start = %llu, file_size = %llu, file size = %llu\n", (long long unsigned)file_starts[i], (long long unsigned)file_sizes[i], (long long unsigned)cache_file_info.file_size);
+            }
+            // Check start
+            off_t start_stripe = (file_starts[i] % (stripe_size * stripe_count))/stripe_size;
+            if (  start_stripe!= ssg_rank ){
+                printf("provider rank is %d, file_start contains %llu\n", ssg_rank, (long long unsigned) file_starts[i]);
+            }
+            // Check last byte
+            off_t end_stripe = ( (file_starts[i] + file_sizes[i] - 1) % (stripe_size * stripe_count)) / stripe_size;
+            if (  start_stripe!= ssg_rank ){
+                printf("provider rank is %d, file_end contains %llu\n", ssg_rank, (long long unsigned) (file_starts[i] + file_sizes[i] - 1));
+            }
+            if ( start_stripe != end_stripe ){
+                printf("provider rank is %d, file_start contains %llu, file_end contains %llu\n", ssg_rank, (long long unsigned) start_stripe, end_stripe);
+            }
+        }
+*/
+        //printf("reading a file with size %llu\n", (long long unsigned) cache_file_info.file_size);
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, &cache_file_info, total_io_amount);
+        #else
+        struct io_args args (engine, req.get_endpoint(), abt_id, fd, client_bulk, mr_pool, xfersize, file_starts, file_sizes, total_io_amount);
+        #endif
+
+        // ceiling division.  Will bail out early if we exhaust file description
+        //size_t ntimes = 1 + (client_bulk.size() - 1)/bufsize;
+        #if BENVOLIO_CACHE_ENABLE == 1
+        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<off_t>*> *file_starts_array;
+        std::vector<off_t> *pages;
+
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        cache_page_register(&cache_file_info, file_starts, file_sizes, &file_starts_array, &file_sizes_array, &pages);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        cache_file_info.thread_mutex = &(args.mutex);
+        #endif
+
+        if (cache_file_info.cache_evictions) {
+            // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
+            cache_file_info.file_starts = new std::vector<off_t>;
+            cache_file_info.file_sizes = new std::vector<uint64_t>;
+
+            //printf("process read total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
+            total_io_amount = 0;
+            int page_index = 0;
+            while (page_index < pages->size()) {
+
+                ABT_mutex_create(&args.mutex);
+                ABT_eventual_create(0, &args.eventual);
+                reset_args(&args);
+
+                // Try to process as many pages as possible, as long as our memory budget allows us to do so, otherwise we proceed by one page.
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                time = ABT_get_wtime();
+                #endif
+                page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+                #endif
+
+                for ( unsigned j = 0; j < cache_file_info.file_sizes->size(); ++j ) {
+                    total_io_amount += cache_file_info.file_sizes[0][j];
+                }
+                args.total_io_amount = total_io_amount;
+                //printf("start handling pages %d to %d, total_io_amount = %ld, requests number = %ld\n", previous, page_index, total_io_amount, cache_file_info.file_sizes->size());
+                size_t ntimes = 1 + (total_io_amount - 1)/bufsize;
+                args.ults_active=ntimes;
+                //printf("ntimes = %ld, total_io_amount = %ld, xfersize = %d\n", ntimes, total_io_amount, xfersize);
+                for (unsigned int j = 0; j< ntimes; j++) {
+                    ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+                }
+                ABT_eventual_wait(args.eventual, NULL);
+                ABT_eventual_free(&args.eventual);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                time = ABT_get_wtime();
+                #endif
+                cache_page_deregister2(&cache_file_info, pages);
+                #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+                #endif
+            }
+
+            delete cache_file_info.file_starts;
+            delete cache_file_info.file_sizes;
+
+        } else {
+            ABT_mutex_create(&args.mutex);
+            ABT_eventual_create(0, &args.eventual);
+
+            size_t ntimes = 1 + (total_io_amount -1)/bufsize;
+            args.ults_active=ntimes;
+            for (unsigned int i = 0; i< ntimes; i++) {
+                ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
+            }
+            ABT_eventual_wait(args.eventual, NULL);
+            ABT_eventual_free(&args.eventual);
+        }
+
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        time = ABT_get_wtime();
+        #endif
+        cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
+        #endif
+        // cache_file_info is no longer valid after deregister
+        cache_deregister_lock(cache_info, file, &cache_file_info);
+
+        #else
         ABT_mutex_create(&args.mutex);
         ABT_eventual_create(0, &args.eventual);
 
-        // ceiling division.  Will bail out early if we exhaust file description
-        size_t ntimes = 1 + (client_bulk.size() - 1)/bufsize;
-        args.ults_active = ntimes;
+        size_t ntimes = 1 + (total_io_amount -1)/bufsize;
+        args.ults_active=ntimes;
         for (unsigned int i = 0; i< ntimes; i++) {
             ABT_thread_create(pool.native_handle(), read_ult, &args, ABT_THREAD_ATTR_NULL, NULL);
         }
         ABT_eventual_wait(args.eventual, NULL);
         ABT_eventual_free(&args.eventual);
-
+        #endif
         local_stats.read_response = ABT_get_wtime();
+        //printf("read return value = %ld\n", args.client_cursor);
         req.respond(args.client_cursor);
         local_stats.read_response = ABT_get_wtime() - local_stats.read_response;
 
@@ -632,6 +1023,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return (stats);
     }
     int del(const std::string &file) {
+        #if BENVOLIO_CACHE_ENABLE == 1
+        cache_remove_file_lock(cache_info, file);
+        #endif
         int ret = abt_io_unlink(abt_id, file.c_str());
         if (ret == -1) ret = errno;
         return ret;
@@ -639,6 +1033,20 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     int flush(const std::string &file) {
 	/* omiting O_CREAT: what would it mean to flush a nonexistent file ? */
         int fd = getfd(file, O_RDWR);
+        #if BENVOLIO_CACHE_ENABLE == 1
+        if (!cache_exist(cache_info, file)) {
+            return (fsync(fd));
+        }
+        Cache_file_info cache_file_info;
+        cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
+        cache_file_info.fd = fd;
+        cache_file_info.abt_id = abt_id;
+        cache_register_lock(cache_info, file ,&cache_file_info);
+        cache_write_back_lock(&cache_file_info);
+        cache_deregister_lock(cache_info, file, &cache_file_info);
+        cache_remove_file_lock(cache_info, file);
+        #endif
+        //printf("provider %d finished flushing\n",ssg_rank);
         return (fsync(fd));
     }
 
@@ -692,7 +1100,45 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rpcs.push_back(define("size", &bv_svc_provider::getsize));
             rpcs.push_back(define("declare", &bv_svc_provider::declare));
             rpcs.push_back(define("ping", &bv_svc_provider::ping));
+            #if BENVOLIO_CACHE_ENABLE == 1
+            ssg_size = ssg_get_group_size(gid);
+            ssg_rank = ssg_get_group_self_rank(gid);
+            cache_info = (Cache_info*) malloc(sizeof(Cache_info));
+            cache_init(cache_info);
+            cache_info->ssg_rank = ssg_rank;
+            cache_info->abt_id = abt_id;
+            rm_args.cache_info = cache_info;
+            rm_args.abt_id = abt_id;
+            rm_args.ssg_rank = ssg_rank;
+            char *p;
+            p = getenv("BENVOLIO_CACHE_MAX_N_BLOCKS");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MAX_N_BLOCKS"));
+            } else {
+                BENVOLIO_CACHE_MAX_N_BLOCKS = 256;
+            }
+            p = getenv("BENVOLIO_CACHE_MIN_N_BLOCKS");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_MIN_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MIN_N_BLOCKS"));
+            } else {
+                BENVOLIO_CACHE_MIN_N_BLOCKS = 256;
+            }
+            p = getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
+            } else {
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
+                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16834;
+            }
 
+            char hostname[256];
+            gethostname(hostname, 256);
+            printf("bv_cache implementation, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+
+            ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
+            ABT_eventual_create(0, &rm_args.eventual);
+            #endif
         }
     void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
     {
@@ -707,6 +1153,18 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
 
     ~bv_svc_provider() {
+        #if BENVOLIO_CACHE_ENABLE == 1
+        cache_shutdown_flag(cache_info);
+        ABT_eventual_wait(rm_args.eventual, NULL);
+        ABT_eventual_free(&rm_args.eventual);
+        printf("provider %d starts to finalize cache_info\n", ssg_rank);
+        #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_summary(cache_info, ssg_rank);
+        #endif
+        cache_flush_all_lock(cache_info, 0);
+        cache_finalize(cache_info);
+        free(cache_info);
+        #endif
         margo_bulk_pool_destroy(mr_pool);
     }
 };

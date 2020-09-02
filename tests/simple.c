@@ -31,8 +31,6 @@ int main(int argc, char **argv)
     else
         filename = "dummy";
 
-    printf("ping: %s\n", bv_ping(client) ? "UP" : "DOWN");
-    ret = bv_ping(client);
 
     printf("delete:\n");
     bv_delete(client, filename);
@@ -88,6 +86,8 @@ int main(int argc, char **argv)
         printf("Error: bv_write returned unexpected number of bytes: exptcted %ld got %ld\n", size, bytes);
         ret -=1;
     }
+    printf("flushing\n");
+    bv_flush(client, filename);
 
     printf("Longer read\n");
     int *cmpbuf = malloc(15000);

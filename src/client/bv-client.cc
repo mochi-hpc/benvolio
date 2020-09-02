@@ -10,7 +10,14 @@
 #include <thallium/serialization/stl/string.hpp>
 #include <thallium/serialization/stl/vector.hpp>
 
+#include <margo.h>
+#include <margo-bulk-pool.h>
+#include <thallium.hpp>
+#include <thallium/margo_exception.hpp>
+
 #include <assert.h>
+#define CLIENT_BUFFER_SIZE 67108864
+
 namespace tl = thallium;
 
 static int Ssg_Initialized=0;
@@ -64,7 +71,9 @@ struct bv_client {
 
     ssg_group_id_t gid;     // attaches to this group; not a member
     io_stats statistics;
-
+    tl::pool pool;
+    std::vector<tl::bulk*> *local_tl_bulks;
+    std::vector<char*> *reserved_memory;
 
     /* used to think the server would know something about how it wanted to
      * distribute data, but now that's probably best handled on a per-file
@@ -86,6 +95,7 @@ struct bv_client {
         size_op(engine->define("size")),
         declare_op(engine->define("declare")),
         ping_op(engine->define("ping")),
+
         gid(group) {}
 
     // writing our own destructor so we can ensure nothing that needs thallium
@@ -177,6 +187,24 @@ bv_client_t bv_init(bv_config_t config)
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
 
+    /**
+      *  We have a total number of bytes available for margo-pool. These bytes are evenly divided into the number of providers blocks.
+      *  In practice, do we have a huge number of providers?
+    **/
+    client->local_tl_bulks = new std::vector<tl::bulk*>(nr_targets);
+    client->reserved_memory = new std::vector<char*>(nr_targets);
+    for ( i = 0; i < nr_targets; ++i ) {
+        client->reserved_memory[0][i] = (char*) malloc((CLIENT_BUFFER_SIZE + nr_targets - 1)/ nr_targets);
+        std::vector<std::pair<void *, std::size_t>> v;
+        std::pair<void *, std::size_t> p;
+        p.first = (void*) client->reserved_memory[0][i];
+        p.second = (CLIENT_BUFFER_SIZE + nr_targets - 1)/ nr_targets;
+        v.push_back(p);
+        client->local_tl_bulks[0][i] = new tl::bulk;
+        client->local_tl_bulks[0][i][0] = client->engine->expose(v, tl::bulk_mode::read_write);
+    }
+
+
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
 }
@@ -203,6 +231,14 @@ int bv_finalize(bv_client_t client)
     // ssg_finalize happens outside of the callback: in our model, we initiated
     // Argobots through ssg_init, so we need to call ssg_finalize after we tear
     // down margo
+    unsigned i;
+    for ( i = 0; i < client->reserved_memory->size(); ++i ) {
+        free(client->reserved_memory[0][i]);
+        delete client->local_tl_bulks[0][i];
+    }
+
+    delete client->reserved_memory;
+    delete client->local_tl_bulks;
     delete client;
     ssg_finalize();
 
@@ -218,6 +254,130 @@ int bv_shutdown(bv_client_t client)
     return ret;
 }
 
+static int pack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::vector<tl::bulk*> *local_tl_bulks, std::vector<char*> *mem_vec, io_kind op) {
+    unsigned j, i;
+    uint64_t total_mem_size;
+    void *local_buffer;
+    char *ptr;
+    size_t local_bufsize;
+    hg_uint32_t actual_count;
+
+    auto mode = tl::bulk_mode::read_only;
+    if (op == BV_READ) {
+        mode = tl::bulk_mode::write_only;
+    }
+
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        total_mem_size = 0;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            total_mem_size += my_reqs[0][j].mem_vec[i].second;
+        }
+        /* When a provider does not receive anything from me, I do not need to do anything actually. */
+        if (!total_mem_size) {
+            continue;
+        }
+
+        if ( (CLIENT_BUFFER_SIZE + client->targets.size() - 1) / client->targets.size() < total_mem_size ) {
+            /* We should malloc a new memory buffer if reserved memory is not enough. */
+            std::vector<std::pair<void *, std::size_t>> v;
+            std::pair<void *, std::size_t> p;
+            p.first = (char*) malloc(sizeof(char) * total_mem_size);
+            mem_vec[0][j] = (char*) p.first;
+            p.second = total_mem_size;
+            local_buffer = p.first;
+            local_bufsize = p.second;
+            v.push_back(p);
+            local_tl_bulks[0][j] = new tl::bulk;
+            local_tl_bulks[0][j][0] = client->engine->expose(v, mode);
+        } else {
+            /* We can get local bulks from margo pool if the reserved memory is enough. */
+            local_tl_bulks[0][j] = client->local_tl_bulks[0][j];
+            mem_vec[0][j] = client->reserved_memory[0][j];
+            local_buffer = mem_vec[0][j];
+        }
+        ptr = (char*) local_buffer;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(ptr, my_reqs[0][j].mem_vec[i].first, sizeof(char) * my_reqs[0][j].mem_vec[i].second);
+            ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+
+    }
+    return 0;
+}
+
+static int unpack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::vector<tl::bulk*> *local_tl_bulks, std::vector<char*> *mem_vec) {
+    unsigned j, i;
+    uint64_t total_mem_size;
+    char *packed_mem_ptr;
+
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        total_mem_size = 0;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            total_mem_size += my_reqs[0][j].mem_vec[i].second;
+        }
+        /* When a provider does not receive anything from me, I do not need to do anything actually. */
+        if (!total_mem_size) {
+            continue;
+        }
+        /* Unpack data received to input memory buffer */
+        packed_mem_ptr = (char*)mem_vec[0][j];
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(my_reqs[0][j].mem_vec[i].first, packed_mem_ptr, sizeof(char) * my_reqs[0][j].mem_vec[i].second);            
+            packed_mem_ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+
+        /* free new tempory buffer */
+        if ( (CLIENT_BUFFER_SIZE + client->targets.size() - 1) / client->targets.size() < total_mem_size ) {
+            free(mem_vec[0][j]);
+            delete local_tl_bulks[0][j];
+        }
+    }
+    return 0;
+}
+
+static int pack_mem(std::vector<io_access> *my_reqs, std::vector<std::vector<std::pair<void *, std::size_t>>> **packed_mem_ptr) {
+    unsigned j, i;
+    char *ptr;
+    uint64_t total_mem_size = 0;
+    std::vector<std::vector<std::pair<void *, std::size_t>>> *packed_mem;
+    *packed_mem_ptr = new std::vector<std::vector<std::pair<void *, std::size_t>>>;
+    packed_mem = *packed_mem_ptr;
+    
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        std::vector<std::pair<void *, std::size_t>> v;
+        std::pair<void *, std::size_t> p;
+        v.push_back(p);
+        packed_mem->push_back(v);
+        packed_mem[0][j][0].second = 0;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            total_mem_size += my_reqs[0][j].mem_vec[i].second;
+            packed_mem[0][j][0].second += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+    ptr = (char*) malloc(sizeof(char) * total_mem_size);
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        packed_mem[0][j][0].first = (void*) ptr;
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(ptr, my_reqs[0][j].mem_vec[i].first, sizeof(char) * my_reqs[0][j].mem_vec[i].second);
+            
+            ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+
+    return 0;
+}
+
+static int unpack_mem(std::vector<io_access> *my_reqs, char *packed_mem_ptr) {
+    unsigned i, j;
+    for ( j = 0; j < my_reqs->size(); ++j ) {
+        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+            memcpy(my_reqs[0][j].mem_vec[i].first, packed_mem_ptr, sizeof(char) * my_reqs[0][j].mem_vec[i].second);            
+            packed_mem_ptr += my_reqs[0][j].mem_vec[i].second;
+        }
+    }
+    return 0;
+}
+
 // use bulk transfer for the memory description
 // the locations in file we will just send over in a list
 // - could compress the file locations: they are likely to compress quite well
@@ -231,22 +391,26 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
     std::vector<io_access> my_reqs(client->targets.size());
-    size_t bytes_moved = 0;
 
+    size_t bytes_moved = 0;
+    double time;
+    std::vector<std::vector<std::pair<void *, std::size_t>>> *packed_mem;
     /* How expensive is this? do we need to move this out of the I/O path?
      * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
+    time = ABT_get_wtime();
     compute_striping_info(client->stripe_size, client->stripe_count, &client->targets_used, 1);
-
+    client->statistics.client_write_calc_striping_time += ABT_get_wtime() - time;
     /* two steps:
      * - first split up the memory and file descriptions into per-target
      *   "bins".  Logic here will get fiddly: we might have to split up a memory
      *   or file block across multiple targets.
      * - second, for each target construct a bulk description for memory and
      *   send the file offset/length pairs in its bin. */
+    time = ABT_get_wtime();
     calc_requests(mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
-
+    client->statistics.client_write_calc_request_time += ABT_get_wtime() - time;
     tl::bulk myBulk;
     auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
@@ -256,6 +420,12 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
         rpc = client->read_op;
     }
 
+    //pack_mem(&my_reqs, &packed_mem);
+    std::vector<char*> *mem_vec = new std::vector<char*>(client->targets.size());
+    std::vector<tl::bulk*> *local_tl_bulks = new std::vector<tl::bulk*>(client->targets.size());
+    time = ABT_get_wtime();
+    pack_mem2(client, &my_reqs, local_tl_bulks, mem_vec, op);
+    client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
     std::vector<tl::async_response> responses;
     std::vector<tl::bulk> my_bulks;
     /* i: index into container of remote targets
@@ -263,24 +433,45 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
      * over targets without any work to do for this request  */
     for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
+        //printf("requests data for %s is moving to provider %d\n", filename, i);
+        //time = ABT_get_wtime();
+        //my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
 
-        double expose_time = ABT_get_wtime();
-        my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
-        expose_time = ABT_get_wtime() - expose_time;
+        //my_bulks.push_back(client->engine->expose(packed_mem[0][i], mode));
+        //my_bulks.push_back(local_tl_bulks[0][i]);
+        //client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
+        time = ABT_get_wtime();
+        //responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
+        responses.push_back(rpc.on(client->targets[i]).async(local_tl_bulks[0][i][0], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
+        client->statistics.client_write_post_request_time2 += ABT_get_wtime() - time;
+        time = ABT_get_wtime() - time;
 
-        if (op == BV_READ)
-            client->statistics.client_read_expose += expose_time;
-        else
-            client->statistics.client_write_expose += expose_time;
+        if (op == BV_READ) {
+            client->statistics.client_read_expose += time;
+        } else {
+            client->statistics.client_write_expose += time;
+        }
 
-        responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len));
     }
-
+    time = ABT_get_wtime();
     for (auto &r : responses) {
         ssize_t ret = r.wait();
         if (ret >= 0)
             bytes_moved += ret;
     }
+    client->statistics.client_write_wait_request_time += ABT_get_wtime() - time;
+/*
+    unpack_mem(&my_reqs, (char*) packed_mem[0][0][0].first);
+    free(packed_mem[0][0][0].first);
+    delete packed_mem;
+*/
+    time = ABT_get_wtime();
+    unpack_mem2(client, &my_reqs, local_tl_bulks, mem_vec);
+    client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
+
+    delete local_tl_bulks;
+    delete mem_vec;
+
     return bytes_moved;
 }
 
@@ -291,6 +482,8 @@ ssize_t bv_write(bv_client_t client, const char *filename,
     ssize_t ret;
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
+
+    //printf("bv_write entered bv_io function\n");
 
     ret = bv_io(client, filename, BV_WRITE, mem_count, mem_addresses, mem_sizes,
             file_count, file_starts, file_sizes);
@@ -347,7 +540,6 @@ int bv_statistics(bv_client_t client, int show_server)
     }
     std::cout << "CLIENT: ";
     client->statistics.print_client();
-    margo_diag_dump(client->engine->get_margo_instance(), "-", 0);
     return ret;
 }
 
@@ -383,18 +575,20 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
     return ret;
 }
 
-size_t bv_ping(bv_client_t client, size_t *nr_providers)
-{
+
+size_t bv_ping(bv_client_t client, size_t *nr_providers){
     int ret = 0;
     if (client == NULL) {
         nr_providers=0;
         return -1;
     }
     *nr_providers = client->targets.size();
+
     for (auto target : client->targets)
         ret += client->ping_op.on(target)().as<int>();
     return ret;
 }
+
 
 bv_config_t bvutil_cfg_get(const char *filename)
 {
