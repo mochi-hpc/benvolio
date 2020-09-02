@@ -89,8 +89,6 @@ int main(int argc, char **argv)
         printf("Error: bv_write returned unexpected number of bytes: exptcted %ld got %ld\n", size, bytes);
         ret -=1;
     }
-    printf("flushing\n");
-    bv_flush(client, filename);
 
     printf("Longer read\n");
     int *cmpbuf = malloc(15000);
@@ -112,6 +110,9 @@ int main(int argc, char **argv)
     }
     free(bigbuf);
     free(cmpbuf);
+
+    printf("flushing\n");
+    bv_flush(client, filename);
 
     filesize = bv_getsize(client, filename);
     if (filesize != 15000+20) {
