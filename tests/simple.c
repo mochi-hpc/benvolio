@@ -31,8 +31,9 @@ int main(int argc, char **argv)
     else
         filename = "dummy";
 
-    printf("ping: %s\n", bv_ping(client) ? "UP" : "DOWN");
-    ret = bv_ping(client);
+    size_t temp;
+    printf("ping: %s\n", bv_ping(client,&temp) ? "UP" : "DOWN");
+    ret = bv_ping(client,&temp);
 
     printf("delete:\n");
     bv_delete(client, filename);
@@ -109,6 +110,9 @@ int main(int argc, char **argv)
     }
     free(bigbuf);
     free(cmpbuf);
+
+    printf("flushing\n");
+    bv_flush(client, filename);
 
     filesize = bv_getsize(client, filename);
     if (filesize != 15000+20) {
