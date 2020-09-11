@@ -174,7 +174,7 @@ bv_client_t bv_init(bv_config_t config)
 
     ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "ssg_group attach: (%d) Is remote provider running?\n", ret);
+        fprintf(stderr, "ssg_group attach: (%d) Is remote provider at %s running?\n", ret, ssg_group_id_get_addr_str(ssg_gids[0], 0));
         delete client;
         return NULL;
     }
