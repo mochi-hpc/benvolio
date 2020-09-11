@@ -88,6 +88,15 @@ int main(int argc, char **argv)
         }
     }
 
+    /* margo rpc thread count:
+     * -1 puts all our rpcs in the mercury context
+     *  0 is only for clients (processes not expecting incomming rpcs)
+     *  1 will leave us one thread for the cache manager but no threads for incomming RPCS
+     *  so 2 or more threads (or -1 threads) needed */
+    if (nstreams == 1) {
+        nstreams = 2;
+        printf("Requested streams too small.  Overriding to %d\n", nstreams);
+    }
     mid = margo_init(proto, MARGO_SERVER_MODE, 0, nstreams);
     margo_enable_remote_shutdown(mid);
 
