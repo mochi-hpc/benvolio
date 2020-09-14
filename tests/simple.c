@@ -114,8 +114,15 @@ int main(int argc, char **argv)
     printf("flushing\n");
     bv_flush(client, filename);
 
+    printf("setting file size\n");
+    ret = bv_setsize(client, filename, 20000);
+    if (ret != 0) {
+        printf("Recieved error %d from bv_setsize\n", ret);
+        ret -= 1;
+    }
+
     filesize = bv_getsize(client, filename);
-    if (filesize != 15000+20) {
+    if (filesize != 20000) {
         printf("Expected %d got %ld\n", 15000+20, filesize);
         ret -= 1;
     }

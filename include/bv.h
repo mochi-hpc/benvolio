@@ -127,6 +127,17 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode);
  */
 size_t bv_ping(bv_client_t client, size_t *nr_providers);
 
+
+/**
+ * setsize: adjust the size of a file e.g. truncate(2)
+ * - client:   (IN) benvolio client object
+ * - filename: (IN) file to be altered
+ * - length:   (IN) new length of targeted file
+ *
+ * returns: zero on success, -ERRNO on error
+ */
+
+int bv_setsize(bv_client_t client, const char * filename, int64_t length);
 #ifdef __cplusplus
 }
 #endif
