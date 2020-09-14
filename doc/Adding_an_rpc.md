@@ -24,11 +24,17 @@ thallium
 
 ### Server side
 
-- add a `ping` method to the `bv_svc_provider` struct.  We'll start with no
-  arguments and only a single return value, but will add more to this later
+- add a `ping` method to the `bv_svc_provider` struct.
+  In this simple RPC we can have no
+  arguments and only a single return value.   RPCs that operate on files should
+  take a file name argument `(const std::string &file)` and either operate on
+  the file name directly, or check to see if benvolio's file descriptor cache
+  already has it  with the `getfd` routine ).
 - in the constructor, call 'define' to register the new method with thallium
 - add the thallium `remote_procedure` to the `rpcs` list: benvolio will use that
   list to deregister all the RPCs at exit.
+- Note: benvolio combines the `define` and `push_back` calls so you can do the above two steps in one line e.g:
+    rpcs.push_back(define("myrpc", &bv_svc_provider::my_rpc_function)
 
 ### Client side
 
