@@ -534,15 +534,18 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 int bv_statistics(bv_client_t client, int show_server)
 {
     int ret =0;
+    std::ostringstream output;
     if (show_server) {
         for (auto target : client->targets) {
             auto s = client->statistics_op.on(target)();
-            std::cout << "SERVER: ";
-            io_stats(s).print_server();
+            output << "SERVER: " <<
+                io_stats(s).server_to_str() << std::endl;
         }
     }
-    std::cout << "CLIENT: ";
-    client->statistics.print_client();
+    output << "CLIENT: " <<
+        client->statistics.client_to_str();
+    std::cout << output.str() << std::endl;
+
     return ret;
 }
 

@@ -139,9 +139,13 @@ class io_stats {
 
 	return *this;
     }
-
     void print_server() {
-        std::cout << "write_rpc_calls " << write_rpc_calls
+        std::cout << server_to_str() << std::endl;
+    }
+
+    const std::string server_to_str() {
+        std::ostringstream output;
+        output << "write_rpc_calls " << write_rpc_calls
             << " write_rpc_time " << write_rpc_time
             << " server_write_calls " << server_write_calls
             << " server_write_time " << server_write_time
@@ -160,10 +164,17 @@ class io_stats {
             << " read_expose " << read_expose
             << " read_response " << read_response
             << " getfd " << getfd
-            << " mutex_time " << mutex_time << std::endl;
+            << " mutex_time " << mutex_time;
+        return output.str();
     }
+
     void print_client() {
-        std::cout << "client_write_calls " << client_write_calls
+        std::cout << client_to_str() << std::endl;
+    }
+
+    const std::string client_to_str() {
+        std::ostringstream output;
+        output << "client_write_calls " << client_write_calls
             << " client_write_time " << client_write_time
 	    << " client_bytes_written " << client_bytes_written
             << " client_write_expose_time " << client_write_expose
@@ -176,9 +187,11 @@ class io_stats {
             << " client_write_calc_request_time " << client_write_calc_request_time
             << " client_write_post_request_time1 " << client_write_post_request_time1
             << " client_write_post_request_time2 " << client_write_post_request_time2
-            << " client_write_wait_request_time " << client_write_wait_request_time
-            << std::endl;
+            << " client_write_wait_request_time " << client_write_wait_request_time;
+
+        return output.str();
     }
+
     void print(void) {
         print_server();
         print_client();
