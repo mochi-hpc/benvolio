@@ -1803,10 +1803,6 @@ static size_t cache_fetch_match(char* local_buf, Cache_file_info *cache_file_inf
     #endif
     //printf("ssg_rank %d reached the end of fetch match\n", cache_file_info->ssg_rank);
     return file_size - remaining_file_size;
-/*
-    cache_fetch(cache_file_info, file_start, file_size, cache_file_info->stripe_size, cache_file_info->stripe_count);
-    return cache_match(local_buf, cache_file_info, file_start, file_size, cache_file_info->stripe_size, cache_file_info->stripe_count);
-*/
 }
 
 static int cache_shutdown_flag(Cache_info *cache_info) {

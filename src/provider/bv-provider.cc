@@ -1076,14 +1076,16 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return 0;
     }
 
-   int ping()
-   {
-       return 0;
-   }
+    int ping()
+    {
+        return 0;
+    }
 
     int setsize(const std::string &file, int64_t length)
     {
+        #if BENVOLIO_CACHE_ENABLE == 1
         cache_flush_all_lock(cache_info, 0);
+        #endif
         return (truncate(file.c_str(), length));
     }
 
@@ -1145,6 +1147,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
+
             #endif
         }
     void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
@@ -1161,9 +1164,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
     ~bv_svc_provider() {
         #if BENVOLIO_CACHE_ENABLE == 1
+
         cache_shutdown_flag(cache_info);
         ABT_eventual_wait(rm_args.eventual, NULL);
         ABT_eventual_free(&rm_args.eventual);
+
         printf("provider %d starts to finalize cache_info\n", ssg_rank);
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_summary(cache_info, ssg_rank);
