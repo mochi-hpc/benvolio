@@ -68,6 +68,7 @@ struct bv_client {
     tl::remote_procedure size_op;
     tl::remote_procedure declare_op;
     tl::remote_procedure ping_op;
+    tl::remote_procedure setsize_op;
 
     ssg_group_id_t gid;     // attaches to this group; not a member
     io_stats statistics;
@@ -95,6 +96,7 @@ struct bv_client {
         size_op(engine->define("size")),
         declare_op(engine->define("declare")),
         ping_op(engine->define("ping")),
+        setsize_op(engine->define("setsize")),
 
         gid(group) {}
 
@@ -110,6 +112,7 @@ struct bv_client {
         size_op.deregister();
         declare_op.deregister();
         ping_op.deregister();
+        setsize_op.deregister();
 
         targets.erase(targets.begin(), targets.end());
         delete engine;
@@ -589,6 +592,18 @@ size_t bv_ping(bv_client_t client, size_t *nr_providers){
     return ret;
 }
 
+int bv_setsize(bv_client_t client, const char *filename, int64_t length) {
+    int ret = 0;
+    if (client == NULL) {
+        return -EINVAL;
+    }
+    /* truncate is like a write.  Send the RPC to every provider so that they
+     * can flush their caches before issuing the operation */
+    for (auto target : client->targets) {
+        ret += client->setsize_op.on(target)(std::string(filename), length).as<int>();
+    }
+    return ret;
+}
 
 bv_config_t bvutil_cfg_get(const char *filename)
 {

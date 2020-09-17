@@ -24,11 +24,17 @@ thallium
 
 ### Server side
 
-- add a `ping` method to the `bv_svc_provider` struct.  We'll start with no
-  arguments and only a single return value, but will add more to this later
+- add a `ping` method to the `bv_svc_provider` struct.
+  In this simple RPC we can have no
+  arguments and only a single return value.   RPCs that operate on files should
+  take a file name argument `(const std::string &file)` and either operate on
+  the file name directly, or check to see if benvolio's file descriptor cache
+  already has it  with the `getfd` routine ).
 - in the constructor, call 'define' to register the new method with thallium
 - add the thallium `remote_procedure` to the `rpcs` list: benvolio will use that
   list to deregister all the RPCs at exit.
+- Note: benvolio combines the `define` and `push_back` calls so you can do the above two steps in one line e.g:
+    rpcs.push_back(define("myrpc", &bv_svc_provider::my_rpc_function)
 
 ### Client side
 
@@ -60,3 +66,20 @@ the `tests/simple.c` test or write a new utility.  The whole point of adding
 this ping RPC was to be able to use a utility program, so we will write one and
 add it to the build system.  One can refer to `src/client/bv-shutdown.c`
 for a good example of such a utility.
+
+
+## Troubleshooting
+
+For the most part Thallium makes adding an RPC easy, but it can somewhat
+complicate figuring out what happened if something goes wrong.
+
+- `HG_Get_output(): Could not get output (HG_CHECKSUM_ERROR)` or `checksum does
+  not match` might happen if you have inadvertently linked against the wrong
+  library.  For example, you might have a spack version and a development
+  version installed, and `LD_LIBRARY_PATH` points to the wrong one. Can be a
+  real headache to track down.
+
+- checksum mismatch can also indicate parameter mismatch.  Double check that
+  your server procedure and clien invocation match up.  If the client sends an
+  RPC with a different number or type of parameters, you will see a checksum
+  mismatch error.
