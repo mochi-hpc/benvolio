@@ -81,6 +81,7 @@ typedef struct {
     std::map<std::string, int> *fd_table;
     std::map<std::string, std::map<off_t, int>*> *cache_page_refcount_table;
     std::map<std::string, std::vector<char*>*> *cache_backup_memory_table;
+    std::map<std::string, size_t> *file_size_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -136,12 +137,13 @@ typedef struct Cache_file_info{
     int stripe_count;
     int stripe_size;
     size_t file_size;
+    size_t write_max_size;
     /*Debug purpose*/
     int ssg_rank;
 } Cache_file_info;
 
-static void cache_register(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
-static void cache_register_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
+static void cache_register(Cache_info *cache_info, const std::string file, Cache_file_info *cache_file_info);
+static void cache_register_lock(Cache_info *cache_info, const std::string file, Cache_file_info *cache_file_info);
 static void cache_deregister_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
 static void cache_deregister(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info);
 static void cache_init(Cache_info *cache_info);
@@ -442,6 +444,8 @@ static void cache_remove_file_lock(Cache_info *cache_info, std::string file) {
 */
 
 static void cache_write_back(Cache_file_info *cache_file_info) {
+    //printf("write back function reached\n");
+
     std::list<abt_io_op_t *> ops;
     std::list<ssize_t> rets;
     off_t cache_offset;
@@ -520,6 +524,9 @@ static void cache_flush_all(Cache_info *cache_info, const int check_time) {
     }
 }
 
+/*
+ * Simple remove all pages by write-back.
+*/
 static void cache_flush_all_lock(Cache_info *cache_info, const int check_time) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
     cache_flush_all(cache_info, check_time);
@@ -562,6 +569,7 @@ static int cache_page_register2(Cache_file_info *cache_file_info, const std::vec
     if (cache_file_info->cache_table->size() + remaining_pages > cache_file_info->cache_block_reserved) {
         // Remove as many pages as we can. We may not be able to remove enough pages due to other threads are actively using them, but we will see how we can do here.
         remove_counter = cache_file_info->cache_table->size() + remaining_pages - cache_file_info->cache_block_reserved;
+        //printf("reached remove condition. cache table size = %ld, remaining_pages = %u, reserved = %d\n", cache_file_info->cache_table->size(), remaining_pages, cache_file_info->cache_block_reserved);
         it2 = cache_file_info->cache_offset_list->begin();
         while (it2 != cache_file_info->cache_offset_list->end()) {
             flush_offset = *it2;
@@ -743,13 +751,25 @@ static void cache_page_deregister(Cache_file_info *cache_file_info, std::vector<
     }
     delete cache_file_info->cache_page_table;
 }
+ 
+/*
+ * Set size function. We simply reset the record for file size.
+ * TODO: Ditch all cache pages beyond the file size.
+*/
+static void cache_set_file_size(Cache_info *cache_info, const std::string &file, int64_t file_size) {
+    std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
+    /* We are keep tracking the "real" file size that is on the disk, so we only shrink, but not enlarging the cache file size until the point request force the enlargement. */
+    if (cache_info->file_size_table[0][file] > file_size) {
+        cache_info->file_size_table[0][file] = file_size;
+    }
+}
 
 /*
  * Initialize a cache_file_info here. It is possible that we should have some additional arguments for I/O to be set as well.
  * We can assume this function register cache_info with some new vectors (or retrieve from it).
  * Always remember to call deregister function when cache_file_info is no longer used.
 */
-static void cache_register(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info) {
+static void cache_register(Cache_info *cache_info, const std::string file, Cache_file_info *cache_file_info) {
     cache_file_info->init_timestamp = cache_info->init_timestamp;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -794,6 +814,14 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_info->cache_backup_memory_table[0][file] = cache_file_info->cache_backup_memory;
 	cache_info->fd_table[0][file] = cache_file_info->fd;
 
+        /* We store the file size when this request is a read request. 
+         * For a write request, we use the maximum of request offset and history file size to determine the actual size. */
+        if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
+            cache_info->file_size_table[0][file] = cache_file_info->file_size;
+        } else {
+            cache_info->file_size_table[0][file] = MAX(cache_file_info->file_size, cache_file_info->write_max_size);
+        }
+
         //printf("ssg_rank %d entered here checkpoint 1\n", cache_file_info->ssg_rank);
         #if BENVOLIO_CACHE_STATISTICS == 1
 
@@ -828,6 +856,11 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_file_info->cache_offset_list = cache_info->cache_offset_list_table[0][file];
         cache_file_info->cache_page_refcount_table = cache_info->cache_page_refcount_table[0][file];
         cache_file_info->cache_backup_memory = cache_info->cache_backup_memory_table[0][file];
+        cache_file_info->file_size = cache_info->file_size_table[0][file];
+        if (cache_file_info->io_type == BENVOLIO_CACHE_WRITE && cache_file_info->file_size < cache_file_info->write_max_size) {
+            cache_info->file_size_table[0][file] = cache_file_info->write_max_size;
+            cache_file_info->file_size = cache_file_info->write_max_size;
+        }
 
         cache_file_info->cache_block_reserved = cache_info->cache_block_reserve_table[0][file];
 
@@ -835,15 +868,10 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         cache_info->cache_block_used[0] -= cache_file_info->cache_block_reserved;
         cache_file_info->cache_block_reserved = MAX(BENVOLIO_CACHE_MIN_N_BLOCKS, (BENVOLIO_CACHE_MAX_N_BLOCKS - cache_info->cache_block_used[0])/2);
         if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
-            cache_file_info->cache_block_reserved = MIN(cache_file_info->cache_block_reserved, (cache_file_info->file_size + BENVOLIO_CACHE_MAX_BLOCK_SIZE - 1) / BENVOLIO_CACHE_MAX_BLOCK_SIZE );
+            cache_file_info->cache_block_reserved = MIN(cache_file_info->cache_block_reserved, (cache_file_info->file_size + BENVOLIO_CACHE_MAX_BLOCK_SIZE) / BENVOLIO_CACHE_MAX_BLOCK_SIZE );
         }
         //printf("block used = %ld + %ld\n", cache_info->cache_block_used[0], cache_file_info->cache_block_reserved);
         cache_info->cache_block_used[0] += cache_file_info->cache_block_reserved;
-/*
-        cache_file_info->cache_block_reserved += 1;
-        cache_info->cache_block_used[0] += 1;
-        cache_info->cache_block_reserve_table[0][file] += 1;
-*/
         cache_info->cache_block_reserve_table[0][file] = cache_file_info->cache_block_reserved;
 /*
         #if BENVOLIO_CACHE_STATISTICS == 1
@@ -875,6 +903,7 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
         #endif
 
         // The file size may not be correct for read after write because the write contents are still in the cache table. We need to iterate through the cache table to figure out the actual file size. This may not be the file size of the entire file, but at least the maximum boundary of this provider's file domain.
+/*
         if (cache_file_info->io_type == BENVOLIO_CACHE_READ) {
             std::map<off_t, std::pair<uint64_t, char*>*>::iterator it;
             std::map<off_t, std::pair<uint64_t, char*>*> *cache_file_table = cache_file_info->cache_table;
@@ -884,11 +913,13 @@ static void cache_register(Cache_info *cache_info, std::string file, Cache_file_
                 }
             }
         }
+*/
         //printf("ssg_rank = %d, File %s, Retrieving registered cache block size of %llu\n", cache_info.ssg_rank, file.c_str(), (long long unsigned)cache_file_info->cache_block_reserved);
     }
+    //printf("-------------------------------------ssg_rank = %d, file_size = %ld, write_max_size = %ld, io_type = %d\n", cache_info->ssg_rank, cache_file_info->file_size, cache_file_info->write_max_size, cache_file_info->io_type);
 }
 
-static void cache_register_lock(Cache_info *cache_info, std::string file, Cache_file_info *cache_file_info) {
+static void cache_register_lock(Cache_info *cache_info, const std::string file, Cache_file_info *cache_file_info) {
     std::lock_guard<tl::mutex> guard(*(cache_info->cache_mutex));
     cache_register(cache_info, file, cache_file_info);
 }
@@ -953,6 +984,7 @@ static void cache_init(Cache_info *cache_info) {
     cache_info->fd_table = new std::map<std::string, int>;
     cache_info->cache_page_refcount_table = new std::map<std::string, std::map<off_t, int>*>;
     cache_info->cache_backup_memory_table = new std::map<std::string, std::vector<char*>*>;
+    cache_info->file_size_table = new std::map<std::string, size_t>;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -1010,6 +1042,7 @@ static void cache_finalize(Cache_info *cache_info) {
     }
     delete cache_info->cache_backup_memory_table;
 
+    delete cache_info->file_size_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -1066,6 +1099,7 @@ static void cache_finalize(Cache_info *cache_info) {
  * Flush many cache blocks into memory.
 */
 static void cache_flush_array(Cache_file_info *cache_file_info, const std::vector<off_t> *cache_offsets) {
+    //printf("reached flush array\n");
     unsigned i;
     off_t cache_offset;
     std::vector<abt_io_op_t*> *write_ops = new std::vector<abt_io_op_t*>;

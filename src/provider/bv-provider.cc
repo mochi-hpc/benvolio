@@ -621,13 +621,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
         cache_file_info.stripe_count = stripe_count;
         cache_file_info.stripe_size = stripe_size;
-/*
-        for ( i = 1; i < file_starts.size(); ++i ) {
-            if ( file_starts[i] < file_starts[i-1] ) {
-                printf("critical error, file offsets are not sorted\n");
+        cache_file_info.file_size = 0;
+        cache_file_info.write_max_size = 0;
+
+        for ( i = 0; i < file_starts.size(); ++i ) {
+            if ( file_starts[i] + file_sizes[i] > cache_file_info.write_max_size ) {
+                cache_file_info.write_max_size = file_starts[i] + file_sizes[i];
             }
         }
-*/
         #if BENVOLIO_CACHE_STATISTICS == 1
         double time;
         cache_request_counter(cache_info, file_sizes);
@@ -1085,6 +1086,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     {
         #if BENVOLIO_CACHE_ENABLE == 1
         cache_flush_all_lock(cache_info, 0);
+        cache_set_file_size(cache_info, file, length);
         #endif
         return (truncate(file.c_str(), length));
     }
