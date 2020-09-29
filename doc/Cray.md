@@ -52,3 +52,9 @@ https://github.com/roblatham00/mpich/tree/bv
 the Cray requires a few extra steps, documented here:
 https://wiki.mpich.org/mpich/index.php/Cray
 
+
+## PMI on Cray
+
+Benvolio has support for SSG's PMI support ("now you have two problems").  PMI
+support on Theta seems a bit of a challenge.  We reccomend the MPI bootstrap on
+Theta.
