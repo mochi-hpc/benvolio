@@ -182,9 +182,9 @@ static void write_ult(void *_args)
         size_t local_bufsize;
         size_t buf_cursor=0;
         size_t xfered=0; // total number of bytes moved in this thread
-        ssize_t nbytes;  // number of bytes for a single i/o operation
+        size_t nbytes;  // number of bytes for a single i/o operation
         ssize_t file_xfer=0; // actual number of bytes sent to file system
-        ssize_t issued = 0; // how many bytes have we sent to abt_io.  We'll
+        size_t issued = 0; // how many bytes have we sent to abt_io.  We'll
                             // collect the actual amount of data transfered
                             // after we wait for all the operations
 
