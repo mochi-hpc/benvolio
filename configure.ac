@@ -120,5 +120,8 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # checks for library functions
 
+# statx: a lightweight way to ask for only a subset of information
+AC_CHECK_FUNCS(statx)
+
 AC_CONFIG_FILES([Makefile maint/bv-client.pc maint/bv-provider.pc])
 AC_OUTPUT
