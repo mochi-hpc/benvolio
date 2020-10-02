@@ -34,6 +34,11 @@
 struct file_info {
     int fd;
     int flags;
+    int32_t stripe_count;
+    int32_t stripe_size;
+    int32_t blocksize;
+
+    file_info(): fd(-1), flags(0), stripe_count(-1), stripe_size(-1), blocksize(-1) {}
 };
 
 struct io_args {
@@ -556,10 +561,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         flags ^= dontcare;
 	std::lock_guard<tl::mutex> guard(fd_mutex);
         auto entry = filetable.find(file);
-        if (entry == filetable.end() ) {
-	    // no 'file' in table
+        // it could be the very first time we have ever seen this file or it
+        // could be that stat updated the info
+        if (entry == filetable.end() || entry->second.fd == -1) {
             fd = abt_io_open(abt_id, file.c_str(), flags, mode);
-            if (fd > 0) filetable[file] = {fd, flags};
+            if (fd > 0) {
+                filetable[file].fd = fd;
+                filetable[file].flags = flags;
+            }
         } else {
 	    // found the file but we will close and reopen if flags are different
 	    if (dontcare_set ||  entry->second.flags  == flags) {
@@ -567,10 +576,25 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	    } else {
 		abt_io_close(abt_id, entry->second.fd);
 		fd = abt_io_open(abt_id, file.c_str(), flags, mode);
-		if (fd > 0) filetable[file] = {fd, flags};
+		if (fd > 0) {
+                    filetable[file].fd = fd;
+                    filetable[file].flags = flags;
+                }
 	    }
         }
         return fd;
+    }
+    void setinfo(const std::string &file, int32_t stripe_count, int32_t stripe_size, int32_t blocksize)
+    {
+        // Unlike open, no need to search: we'll either update an existing
+        // filetable entry or create a new one
+        filetable[file].stripe_count = stripe_count;
+        filetable[file].stripe_size = stripe_size;
+        filetable[file].blocksize = blocksize;
+    }
+    file_stats getinfo(const std::string &file)
+    {
+        return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize);
     }
 
 
@@ -1001,9 +1025,13 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     struct file_stats getstats(const std::string &file)
     {
 	int rc;
-        int fd = getfd(file, dontcare);
         struct file_stats ret;
         struct stat statbuf;
+
+        file_stats cached_stats = getinfo(file);
+        if (cached_stats.stripe_count != -1)
+            return cached_stats;
+
         rc = stat(file.c_str(), &statbuf);
 	if (rc == -1 && errno == ENOENT) {
 	    char * dup = strdup(file.c_str());
@@ -1019,6 +1047,9 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	/* lustre header incompatible with c++ , so need to stuff the lustre
 	 * bits into a c-compiled object */
 	ret.status  = lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
+
+        /* we would like to avoid making a stat() call in the future */
+        setinfo(file, ret.stripe_count, ret.stripe_size, ret.blocksize);
 
         return ret;
     }
