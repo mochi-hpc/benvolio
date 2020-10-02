@@ -534,6 +534,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     const int xfersize;      // size of one region of registered memory
     struct io_stats stats;
     static const int default_mode = 0644;
+    static const int dontcare = 010000000000;
     tl::mutex    stats_mutex;
     tl::mutex    size_mutex;
     tl::mutex    fd_mutex;
@@ -548,8 +549,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     // server will maintain a cache of open files
     // std::map not great for LRU
     // if we see a request for a file with a different 'flags' we will close and reopen
+    // special flag "DONTCARE" for when we just want the fd (e.g. stat)
     int getfd(const std::string &file, int flags, int mode=default_mode) {
         int fd=-1;
+        int dontcare_set = flags & dontcare;
+        flags ^= dontcare;
 	std::lock_guard<tl::mutex> guard(fd_mutex);
         auto entry = filetable.find(file);
         if (entry == filetable.end() ) {
@@ -558,7 +562,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             if (fd > 0) filetable[file] = {fd, flags};
         } else {
 	    // found the file but we will close and reopen if flags are different
-	    if ( entry->second.flags  == flags) {
+	    if (dontcare_set ||  entry->second.flags  == flags) {
 		fd = entry->second.fd;
 	    } else {
 		abt_io_close(abt_id, entry->second.fd);
@@ -997,6 +1001,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     struct file_stats getstats(const std::string &file)
     {
 	int rc;
+        int fd = getfd(file, dontcare);
         struct file_stats ret;
         struct stat statbuf;
         rc = stat(file.c_str(), &statbuf);
@@ -1033,7 +1038,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
     int flush(const std::string &file) {
 	/* omiting O_CREAT: what would it mean to flush a nonexistent file ? */
-        int fd = getfd(file, O_RDWR);
+        int fd = getfd(file, dontcare);
         #if BENVOLIO_CACHE_ENABLE == 1
         if (!cache_exist(cache_info, file)) {
             return (fsync(fd));
@@ -1054,8 +1059,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     ssize_t getsize(const std::string &file) {
 	std::lock_guard<tl::mutex> guard(size_mutex);
         off_t oldpos=-1, pos=-1;
-	/* have to open read-write in case subsequent write call comes in */
-        int fd = getfd(file, O_CREAT|O_RDONLY);
+        int fd = getfd(file, dontcare);
         if (fd < 0) return fd;
         oldpos = lseek(fd, 0, SEEK_CUR);
         if (oldpos == -1)
