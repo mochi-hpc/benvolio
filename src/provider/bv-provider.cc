@@ -621,13 +621,14 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
         cache_file_info.stripe_count = stripe_count;
         cache_file_info.stripe_size = stripe_size;
-/*
-        for ( i = 1; i < file_starts.size(); ++i ) {
-            if ( file_starts[i] < file_starts[i-1] ) {
-                printf("critical error, file offsets are not sorted\n");
+        cache_file_info.file_size = 0;
+        cache_file_info.write_max_size = 0;
+
+        for ( i = 0; i < file_starts.size(); ++i ) {
+            if ( file_starts[i] + file_sizes[i] > cache_file_info.write_max_size ) {
+                cache_file_info.write_max_size = file_starts[i] + file_sizes[i];
             }
         }
-*/
         #if BENVOLIO_CACHE_STATISTICS == 1
         double time;
         cache_request_counter(cache_info, file_sizes);
@@ -1076,14 +1077,17 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         return 0;
     }
 
-   int ping()
-   {
-       return 0;
-   }
+    int ping()
+    {
+        return 0;
+    }
 
     int setsize(const std::string &file, int64_t length)
     {
+        #if BENVOLIO_CACHE_ENABLE == 1
         cache_flush_all_lock(cache_info, 0);
+        cache_set_file_size(cache_info, file, length);
+        #endif
         return (truncate(file.c_str(), length));
     }
 
@@ -1120,19 +1124,19 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             char *p;
             p = getenv("BENVOLIO_CACHE_MAX_N_BLOCKS");
             if ( p != NULL ) {
-                BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MAX_N_BLOCKS"));
+                BENVOLIO_CACHE_MAX_N_BLOCKS = atoi(p);
             } else {
                 BENVOLIO_CACHE_MAX_N_BLOCKS = 256;
             }
             p = getenv("BENVOLIO_CACHE_MIN_N_BLOCKS");
             if ( p != NULL ) {
-                BENVOLIO_CACHE_MIN_N_BLOCKS = atoi(getenv("BENVOLIO_CACHE_MIN_N_BLOCKS"));
+                BENVOLIO_CACHE_MIN_N_BLOCKS = atoi(p);
             } else {
                 BENVOLIO_CACHE_MIN_N_BLOCKS = 256;
             }
             p = getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE");
             if ( p != NULL ) {
-                BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(getenv("BENVOLIO_CACHE_MAX_BLOCK_SIZE"));
+                BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(p);
             } else {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
                 //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
@@ -1145,6 +1149,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
+
             #endif
         }
     void dump_io_req(const std::string extra, const tl::bulk &client_bulk, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes)
@@ -1161,9 +1166,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
     ~bv_svc_provider() {
         #if BENVOLIO_CACHE_ENABLE == 1
+
         cache_shutdown_flag(cache_info);
         ABT_eventual_wait(rm_args.eventual, NULL);
         ABT_eventual_free(&rm_args.eventual);
+
         printf("provider %d starts to finalize cache_info\n", ssg_rank);
         #if BENVOLIO_CACHE_STATISTICS == 1
         cache_summary(cache_info, ssg_rank);
