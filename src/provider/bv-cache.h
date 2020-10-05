@@ -133,7 +133,7 @@ typedef struct Cache_file_info{
     /* Read or write operation?*/
     int io_type;
     /* How many cache blocks? */
-    int cache_block_reserved;
+    size_t cache_block_reserved;
     int stripe_count;
     int stripe_size;
     size_t file_size;
@@ -549,7 +549,7 @@ static void cache_request_counter(Cache_info *cache_info, const std::vector<uint
     #endif
 }
 
-static int cache_page_register2(Cache_file_info *cache_file_info, const std::vector<std::vector<off_t>*> *file_starts_array, const std::vector<std::vector<uint64_t>*> *file_sizes_array, const std::vector<off_t> *pages, int page_index) {
+static int cache_page_register2(Cache_file_info *cache_file_info, const std::vector<std::vector<off_t>*> *file_starts_array, const std::vector<std::vector<uint64_t>*> *file_sizes_array, const std::vector<off_t> *pages, size_t page_index) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     unsigned i, remove_counter, remaining_pages;
 
@@ -618,8 +618,6 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, const std::
     cache_file_info->file_starts->clear();
     cache_file_info->file_sizes->clear();
     std::vector<off_t>::iterator it;
-    off_t cache_offset;
-    unsigned i;
     std::map<off_t, std::pair<uint64_t, char*>>::iterator it3;
     for ( it3 = cache_file_info->cache_page_table->begin(); it3 != cache_file_info->cache_page_table->end(); ++it3 ) {
         cache_file_info->cache_page_refcount_table[0][it3->first]--;

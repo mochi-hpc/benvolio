@@ -137,9 +137,7 @@ static char * get_proto_from_addr(char *addr_str)
 bv_client_t bv_init(bv_config_t config)
 {
     char *addr_str;
-    int rank;
     int ret, i, nr_targets;
-    char *ssg_group_buf;
     double init_time = ABT_get_wtime();
 
 
@@ -263,7 +261,6 @@ static int pack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::v
     void *local_buffer;
     char *ptr;
     size_t local_bufsize;
-    hg_uint32_t actual_count;
 
     auto mode = tl::bulk_mode::read_only;
     if (op == BV_READ) {
@@ -397,7 +394,6 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
 
     size_t bytes_moved = 0;
     double time;
-    std::vector<std::vector<std::pair<void *, std::size_t>>> *packed_mem;
     /* How expensive is this? do we need to move this out of the I/O path?
      * Maybe 'bv_stat' can cache these values on the client struct? */
     client->targets_used = client->targets.size();
@@ -415,15 +411,11 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
             file_count, file_starts, file_sizes, client->stripe_size, client->targets_used, my_reqs);
     client->statistics.client_write_calc_request_time += ABT_get_wtime() - time;
     tl::bulk myBulk;
-    auto mode = tl::bulk_mode::read_only;
     auto rpc = client->write_op;
-
     if (op == BV_READ) {
-        mode = tl::bulk_mode::write_only;
         rpc = client->read_op;
     }
 
-    //pack_mem(&my_reqs, &packed_mem);
     std::vector<char*> *mem_vec = new std::vector<char*>(client->targets.size());
     std::vector<tl::bulk*> *local_tl_bulks = new std::vector<tl::bulk*>(client->targets.size());
     time = ABT_get_wtime();
@@ -434,17 +426,11 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     /* i: index into container of remote targets
      * j: index into container of bulk regions -- different because we skip
      * over targets without any work to do for this request  */
-    for (unsigned int i=0, j=0; i< client->targets.size(); i++) {
+    for (unsigned int i=0;  i< client->targets.size(); i++) {
         if (my_reqs[i].mem_vec.size() == 0) continue; // no work for this target
         //printf("requests data for %s is moving to provider %d\n", filename, i);
-        //time = ABT_get_wtime();
-        //my_bulks.push_back(client->engine->expose(my_reqs[i].mem_vec, mode));
 
-        //my_bulks.push_back(client->engine->expose(packed_mem[0][i], mode));
-        //my_bulks.push_back(local_tl_bulks[0][i]);
-        //client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
         time = ABT_get_wtime();
-        //responses.push_back(rpc.on(client->targets[i]).async(my_bulks[j++], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
         responses.push_back(rpc.on(client->targets[i]).async(local_tl_bulks[0][i][0], std::string(filename), my_reqs[i].offset, my_reqs[i].len, client->targets_used, client->stripe_size));
         client->statistics.client_write_post_request_time2 += ABT_get_wtime() - time;
         time = ABT_get_wtime() - time;
@@ -463,11 +449,6 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
             bytes_moved += ret;
     }
     client->statistics.client_write_wait_request_time += ABT_get_wtime() - time;
-/*
-    unpack_mem(&my_reqs, (char*) packed_mem[0][0][0].first);
-    free(packed_mem[0][0][0].first);
-    delete packed_mem;
-*/
     time = ABT_get_wtime();
     unpack_mem2(client, &my_reqs, local_tl_bulks, mem_vec);
     client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
@@ -534,15 +515,18 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 int bv_statistics(bv_client_t client, int show_server)
 {
     int ret =0;
+    std::ostringstream output;
     if (show_server) {
         for (auto target : client->targets) {
             auto s = client->statistics_op.on(target)();
-            std::cout << "SERVER: ";
-            io_stats(s).print_server();
+            output << "SERVER: " <<
+                io_stats(s).server_to_str() << std::endl;
         }
     }
-    std::cout << "CLIENT: ";
-    client->statistics.print_client();
+    output << "CLIENT: " <<
+        client->statistics.client_to_str();
+    std::cout << output.str() << std::endl;
+
     return ret;
 }
 
