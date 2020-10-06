@@ -13,9 +13,9 @@ OUT_FILE=`basename $1`
 prte --host localhost:8 &
 
 # Start server
-sleep 1
-echo "prun -np ${NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &"
-prun -np ${NSERVER} src/provider/bv-server -p sockets -b 2048 -f ${OUT_FILE}.svc &
+sleep 5
+echo "prun -np ${NSERVER} src/provider/bv-server.pmix -p sockets -b 2048 -f ${OUT_FILE}.svc &"
+prun -np ${NSERVER} src/provider/bv-server.pmix -p sockets -b 2048 -f ${OUT_FILE}.svc &
 
 echo "SERVER_PID=$!"
 SERVER_PID=$!
@@ -47,7 +47,7 @@ echo "RET_VAL=${RET_VAL}"
 # Stop server
 echo "src/client/bv-shutdown ${OUT_FILE}.svc"
 prun -np 1 src/client/bv-shutdown ${OUT_FILE}.svc
-prun -terminate
+pterm
 
 # Return result
 exit ${RET_VAL}

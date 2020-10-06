@@ -7,6 +7,7 @@ class io_stats {
             server_write_calls(0), server_write_time(0.0),
 	    bytes_written(0),
             server_read_calls(0), server_read_time(0.0), bytes_read(0),
+            open_calls(0), stat_calls(0),
 	    write_bulk_time(0.0), write_bulk_xfers(0),
             read_bulk_time(0.0), read_bulk_xfers(0),
             write_expose(0.0), read_expose(0.0),
@@ -37,6 +38,8 @@ class io_stats {
         ar & server_read_calls;
         ar & server_read_time;
         ar & bytes_read;
+        ar & open_calls;
+        ar & stat_calls;
         ar & mutex_time;
         ar & write_bulk_xfers;
         ar & write_bulk_time;
@@ -67,6 +70,8 @@ class io_stats {
     int server_read_calls;    // how many read calls server made to process rpc
     double server_read_time;  // time spent in read calls
     int64_t bytes_read;       // bytes read from storage
+    int open_calls;           // how many times we opened files
+    int stat_calls;           // how many times we interrogated the file system
 
     /* -- networking stats -- */
     double write_bulk_time;   // time spent in bulk xfer
@@ -114,6 +119,8 @@ class io_stats {
 	server_read_calls += rhs.server_read_calls;
 	server_read_time += rhs.server_read_time;
 	bytes_read += rhs.bytes_read;
+        open_calls += rhs.open_calls;
+        stat_calls += rhs.stat_calls;
 
 	write_bulk_time += rhs.write_bulk_time;
 	write_bulk_xfers += rhs.write_bulk_xfers;
@@ -159,6 +166,8 @@ class io_stats {
             << " server_read_calls " << server_read_calls
             << " server_read_time " << server_read_time
             << " bytes_read " << bytes_read
+            << " open_calls " << open_calls
+            << " stat_calls " << stat_calls
             << " read_bulk_time " << read_bulk_time
             << " read_bulk_xfers " << read_bulk_xfers
             << " read_expose " << read_expose
