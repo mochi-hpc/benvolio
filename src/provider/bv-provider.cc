@@ -564,6 +564,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         // it could be the very first time we have ever seen this file or it
         // could be that stat updated the info
         if (entry == filetable.end() || entry->second.fd == -1) {
+            stats.open_calls++;
             fd = abt_io_open(abt_id, file.c_str(), flags, mode);
             if (fd > 0) {
                 filetable[file].fd = fd;
@@ -576,6 +577,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	    } else {
 		abt_io_close(abt_id, entry->second.fd);
 		fd = abt_io_open(abt_id, file.c_str(), flags, mode);
+                stats.open_calls++;
 		if (fd > 0) {
                     filetable[file].fd = fd;
                     filetable[file].flags = flags;
@@ -1031,6 +1033,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         file_stats cached_stats = getinfo(file);
         if (cached_stats.stripe_count != -1)
             return cached_stats;
+
+        stats.stat_calls++;
 
         rc = stat(file.c_str(), &statbuf);
 	if (rc == -1 && errno == ENOENT) {
