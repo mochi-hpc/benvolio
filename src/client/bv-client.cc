@@ -480,6 +480,7 @@ ssize_t bv_read(bv_client_t client, const char *filename,
 
 int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 {
+    double stat_time = ABT_get_wtime();
     file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
 
     stats->blocksize = response.blocksize;
@@ -490,6 +491,8 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
     client->blocksize = response.blocksize;
     client->stripe_size = response.stripe_size;
     client->stripe_count = response.stripe_count;
+    stat_time = ABT_get_wtime() - stat_time;
+    client->statistics.client_stat_time += stat_time;
     return(0);
 }
 
@@ -513,10 +516,13 @@ int bv_statistics(bv_client_t client, int show_server)
 
 int bv_flush(bv_client_t client, const char *filename)
 {
+    double flush_time = ABT_get_wtime();
     int ret=0;
     for (auto target : client->targets)
         ret = client->flush_op.on(target)(std::string(filename));
 
+    flush_time = ABT_get_wtime() - flush_time;
+    client->statistics.client_flush_time += flush_time;
     return ret;
 }
 
@@ -530,6 +536,7 @@ ssize_t bv_getsize(bv_client_t client, const char *filename)
 
 int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
 {
+    double declare_time = ABT_get_wtime();
     std::vector<tl::async_response> responses;
     for (auto target : client->targets)
         responses.push_back(client->declare_op.on(target).async(std::string(filename), flags, mode));
@@ -540,6 +547,8 @@ int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
         result = r.wait();
         ret += result;
     }
+    declare_time = ABT_get_wtime() - declare_time;
+    client->statistics.client_declare_time += declare_time;
     return ret;
 }
 
@@ -558,6 +567,7 @@ size_t bv_ping(bv_client_t client, size_t *nr_providers){
 }
 
 int bv_setsize(bv_client_t client, const char *filename, int64_t length) {
+    double setsize_time = ABT_get_wtime();
     int ret = 0;
     if (client == NULL) {
         return -EINVAL;
@@ -567,6 +577,8 @@ int bv_setsize(bv_client_t client, const char *filename, int64_t length) {
     for (auto target : client->targets) {
         ret += client->setsize_op.on(target)(std::string(filename), length).as<int>();
     }
+    setsize_time = ABT_get_wtime() - setsize_time;
+    client->statistics.client_setsize_time += setsize_time;
     return ret;
 }
 

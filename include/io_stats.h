@@ -19,6 +19,9 @@ class io_stats {
 	    client_bytes_read(0),
 	    client_init_time(0.0),
             client_write_expose(0.0), client_read_expose(0.0),
+            client_stat_time(0.0), client_setsize_time(0.0),
+            client_declare_time(0.0),
+            client_flush_time(0.0),
             client_write_calc_striping_time(0.0),
             client_write_calc_request_time(0.0),
             client_write_post_request_time1(0.0),
@@ -97,6 +100,10 @@ class io_stats {
     double client_init_time; // how long does it take to set everything up
     double client_write_expose; // time spent registering memory before writing
     double client_read_expose;  // time spent registering memory before reading
+    double client_stat_time;    // time spent in "bv_stat"
+    double client_setsize_time; // time spent in "bv_setsize"
+    double client_declare_time; // time spent in "bv_declare"
+    double client_flush_time; // time spent in "bv_flush"
 
 
     double client_write_calc_striping_time;
@@ -135,9 +142,17 @@ class io_stats {
 
 	client_write_calls += rhs.client_write_calls;
 	client_write_time += rhs.client_write_time;
+        client_bytes_written += rhs.client_bytes_written;
 	client_read_calls += rhs.client_read_calls;
 	client_read_time += rhs.client_read_time;
+        client_bytes_read += rhs.client_bytes_read;
 	client_init_time += rhs.client_init_time;
+        client_write_expose += rhs.client_write_expose;
+        client_read_expose += rhs.client_read_expose;
+        client_stat_time += rhs.client_stat_time;
+        client_setsize_time += rhs.client_setsize_time;
+        client_declare_time += rhs.client_declare_time;
+        client_flush_time += rhs.client_flush_time;
 	client_write_calc_striping_time += rhs.client_write_calc_striping_time;
 	client_write_calc_request_time += rhs.client_write_calc_request_time;
 	client_write_post_request_time1 += rhs.client_write_post_request_time1;
@@ -192,6 +207,10 @@ class io_stats {
 	    << " client_bytes_read " << client_bytes_read
             << " client_read_expose_time " << client_read_expose
             << " client_init_time " << client_init_time
+            << " client_stat_time " << client_stat_time
+            << " client_setsize_time " << client_setsize_time
+            << " client_declare_time " << client_declare_time
+            << " client_flush_time " << client_flush_time
             << " client_write_calc_striping_time " << client_write_calc_striping_time
             << " client_write_calc_request_time " << client_write_calc_request_time
             << " client_write_post_request_time1 " << client_write_post_request_time1
