@@ -60,12 +60,15 @@ AC_CHECK_LIB([ssg],
              [-lpmix]
 )
 
+# almost all implementations provide a 'libmpi' ... except vendors
+AC_SEARCH_LIBS([MPI_Init],
+        [mpi mpich mpi_ibm])
+
 AC_CHECK_LIB([ssg],
 	     [ssg_group_create_mpi],
 	     [ssg_with_mpi=yes
 	      AC_DEFINE([SSG_HAS_MPI], 1,[Does SSG library have MPI support])],
-	     [],
-	     [-lmpi]
+	     []
 )
 
 # benvolio will use MPI, PMIx or both to bootstrap, but only if we find the
