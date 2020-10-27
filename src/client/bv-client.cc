@@ -18,6 +18,13 @@
 #include <assert.h>
 #define CLIENT_BUFFER_SIZE 67108864
 
+#include "bv-config.h"
+#ifdef USE_DRC
+extern "C" {
+#include <rdmacred.h>
+}
+#endif
+
 namespace tl = thallium;
 
 static int Ssg_Initialized=0;
@@ -130,16 +137,16 @@ static char * get_proto_from_addr(char *addr_str)
     char *p = addr_str;
     char *q = strchr(addr_str, ':');
     if (q == NULL) return NULL;
-
     *q = '\0';
     return p;
 }
+
 bv_client_t bv_init(bv_config_t config)
 {
     char *addr_str;
     int ret, i, nr_targets;
     double init_time = ABT_get_wtime();
-
+    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
 
     /* we used to do a scalable read-and-broadcast inside bv_init.  I then
      * decided the scalable broadcast part of that was better handled outside
@@ -158,13 +165,30 @@ bv_client_t bv_init(bv_config_t config)
         return NULL;
     }
 
+#ifdef USE_DRC
+    int64_t ssg_cred;
+    uint32_t drc_credential_id;
+    drc_info_handle_t drc_credential_info;
+    char drc_key_str[256] = {0};
+    uint32_t drc_cookie;
+
+    ssg_cred = ssg_group_id_get_cred(ssg_gids[0]);
+    drc_credential_id = (uint32_t)ssg_cred;
+
+    drc_access(drc_credential_id, 0, &drc_credential_info);
+    drc_cookie = drc_get_first_cookie(drc_credential_info);
+    sprintf(drc_key_str, "%u", drc_cookie);
+    hii.na_init_info.auth_key = drc_key_str;
+#endif
+
     addr_str = ssg_group_id_get_addr_str(ssg_gids[0], 0);
     char * proto = get_proto_from_addr(addr_str);
     if (proto == NULL) return NULL;
 
-
-    auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE);
+    auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE,
+            false /* use progress thread*/, 0 /* thread count: none needed for client */, &hii);
     free(addr_str);
+
     bv_client *client = new bv_client(theEngine, ssg_gids[0]);
 
     finalize_args_t *args = (finalize_args_t *)malloc(sizeof(finalize_args_t));
@@ -172,6 +196,7 @@ bv_client_t bv_init(bv_config_t config)
 
     args->m_id = client->engine->get_margo_instance();
     margo_push_prefinalize_callback(client->engine->get_margo_instance(), &finalized_ssg_group_cb, (void *)args);
+
 
     ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {

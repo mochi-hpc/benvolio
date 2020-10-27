@@ -45,6 +45,15 @@ CPPFLAGS="$ABTIO_CFLAGS $CPPFLAGS"
 CFLAGS="$ABTIO_CFLAGS $CFLAGS"
 
 
+use_drc=0
+PKG_CHECK_MODULES([DRC],[cray-drc],
+        [AC_DEFINE([USE_DRC], 1, [use cray dynamic rdma credentials]) ]
+	use_drc=1,
+	[] )
+LIBS="$DRC_LIBS $LIBS"
+CPPFLAGS="$DRC_CFLAGS $CPPFLAGS"
+CFLAGS="$DRC_CFLAGS $CFLAGS"
+
 # Bootstrapping: we can do it with either MPI or PMIx, but both require SSG to
 # support it.  We need to check for both SSG's level of support as well as
 # general support in the environment.
