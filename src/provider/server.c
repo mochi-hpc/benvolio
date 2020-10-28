@@ -124,7 +124,7 @@ int main(int argc, char **argv)
     bv_svc_provider_t bv_id;
     struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
     char drc_key_str[256] = {0};
-    int ret;
+    int ret=0;
     int nprocs;
     int rank;
     ssg_group_id_t gid;
@@ -167,8 +167,8 @@ int main(int argc, char **argv)
 #ifdef USE_PMIX
     pmix_proc_t proc;
     pmix_status_t p_ret;
-    ret = PMIx_Init(&proc, NULL, 0);
-    ASSERT(ret == PMIX_SUCCESS, "PMIx_Init failed (ret = %d)\n", ret);
+    p_ret = PMIx_Init(&proc, NULL, 0);
+    ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Init failed (ret = %d)\n", p_ret);
     rank = proc.rank;
     ret = establish_credentials_pmix_all(proc, &g_conf);
 #endif
@@ -249,7 +249,7 @@ int main(int argc, char **argv)
     /* only one member of the SSG group needs to write out the file.  Clients
      * will load and deserialize the file to find this ssg group and observe it */
 
-    if (ssg_get_group_self_rank(gid) == 0)
+    if (rank == 0)
         service_config_store(statefile, gid, nprocs);
 
     ret = bv_svc_provider_register(mid, abtio, ABT_POOL_NULL, gid, bufsize, xfersize, &bv_id);

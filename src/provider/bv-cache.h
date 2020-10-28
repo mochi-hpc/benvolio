@@ -787,7 +787,7 @@ static void cache_register(Cache_info *cache_info, const std::string file, Cache
 
         /* When we are out of cache space, we are going to remove all file caches that are not currently processed.*/
         if (cache_info->cache_block_used[0] >= BENVOLIO_CACHE_MAX_N_BLOCKS) {
-            printf("ssg_rank %d entered eager cache write-back mechanism! page used = %ld, budget = %ld\n", cache_info->ssg_rank, cache_info->cache_block_used[0], BENVOLIO_CACHE_MAX_N_BLOCKS);
+            printf("ssg_rank %d entered eager cache write-back mechanism! page used = %d, budget = %d\n", cache_info->ssg_rank, cache_info->cache_block_used[0], BENVOLIO_CACHE_MAX_N_BLOCKS);
             //cache_flush_all(cache_info, 0);
         }
 
