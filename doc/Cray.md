@@ -20,9 +20,23 @@ Argonne's Theta sysem is a Cray XC40.  It uses 'aprun' to launch jobs.
 
 As long as you have requested enough nodes, you can launch as many 'aprun'
 processes as you want.  However, as a security precaution those processes
-cannot talk to each other without first setting up a "protection domain"
+cannot talk to each other without first establishing additional credentials.
+That extra step can either be a "protection domain" or a "dynamic RDMA
+credential"
 
-## managing protection domains
+## Dynamic RDMA Credentials (drc)
+
+Benvolio will use DRC if it can find the necessary libraries.  If you load the
+`rdma-credentials` module, then `pkg-config` will be able to report the flags
+for the `cray-drc` package.
+
+DRC works for both PMIx and MPI provider job launch.  Clients will obtain the
+credential from the benvolio (ssg) state file.
+
+For more information about Cray DRC please see
+this [CUG 2016 paper](https://cug.org/proceedings/cug2016_proceedings/includes/files/pap108s2-file1.pdf)
+
+## managing protection domains (aprun only)
 
 Other projects have done a good job documenting protection domains.  In
 particular I found
@@ -44,6 +58,7 @@ this:
 
 No way around that except to contact the support desk and ask for help cleaning up old ones.
 
+
 ## Building MPICH
 
 Like any other external library, the 'bv' driver (
@@ -52,3 +67,9 @@ https://github.com/roblatham00/mpich/tree/bv
 the Cray requires a few extra steps, documented here:
 https://wiki.mpich.org/mpich/index.php/Cray
 
+
+## PMI on Cray
+
+Benvolio has support for SSG's PMI support ("now you have two problems").  PMI
+support on Theta seems a bit of a challenge.  We reccomend the MPI bootstrap on
+Theta.  Now that benvolio has DRC support it should be more feasible.
