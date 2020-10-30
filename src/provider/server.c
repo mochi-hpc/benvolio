@@ -10,6 +10,7 @@
 #include <mpi.h>
 #include <ssg-mpi.h>
 #endif
+#include "common.h"
 #include "bv-provider.h"
 
 #include "bv-config.h"

@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 #include <ssg.h>
+#include "common.h"
 #include "io_stats.h"
 #include "file_stats.h"
 #include "calc-request.h"
