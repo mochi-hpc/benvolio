@@ -1178,13 +1178,17 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = atoi(p);
             } else {
                 BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16777216;
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 4194304;
-                //BENVOLIO_CACHE_MAX_BLOCK_SIZE = 16834;
+            }
+            p = getenv("BENVOLIO_CACHE_WRITE_BACK_RATIO");
+            if ( p != NULL ) {
+                BENVOLIO_CACHE_WRITE_BACK_RATIO = atof(p);
+            } else {
+                BENVOLIO_CACHE_WRITE_BACK_RATIO = .5;
             }
 
             char hostname[256];
             gethostname(hostname, 256);
-            printf("bv_cache implementation, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE);
+            printf("bv_cache implementation, hostname = %s, ssg_rank %d initialized with BENVOLIO_CACHE_MAX_N_BLOCKS = %d, BENVOLIO_CACHE_MIN_N_BLOCKS = %d, BENVOLIO_CACHE_MAX_BLOCK_SIZE = %d, BENVOLIO_CACHE_WRITE_BACK_RATIO = %f\n", hostname, ssg_rank, BENVOLIO_CACHE_MIN_N_BLOCKS, BENVOLIO_CACHE_MAX_N_BLOCKS, BENVOLIO_CACHE_MAX_BLOCK_SIZE, BENVOLIO_CACHE_WRITE_BACK_RATIO);
 
             ABT_thread_create(pool.native_handle(), cache_resource_manager, &rm_args, ABT_THREAD_ATTR_NULL, NULL);
             ABT_eventual_create(0, &rm_args.eventual);
