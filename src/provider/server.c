@@ -1,8 +1,11 @@
+#define _GNU_SOURCE
+
 #include <margo.h>
 #include <abt-io.h>
 #include <ssg.h>
 #include <getopt.h>
 #ifdef USE_PMIX
+#include <stdio.h>
 #include <pmix.h>
 #include <ssg-pmix.h>
 #endif
@@ -59,35 +62,41 @@ int establish_credentials_pmix_all(pmix_proc_t proc, ssg_group_config_t *g_conf)
     uint32_t drc_credential_id = -1;
 #ifdef USE_DRC
     char *drc_pmix_key;
+    pmix_proc_t tmp_proc;
+    pmix_value_t value, *val_p;
+    pmix_info_t *info;
+    int ret;
+    pmix_status_t p_ret;
+    bool flag;
 
-    asprintf(&drc_pmix_key, "ssg-drc-%s", proc.nspace);
-    ASSERT(ret > 0, "asprintf");
+    ret = asprintf(&drc_pmix_key, "ssg-drc-%s", proc.nspace);
+    ASSERT(ret > 0, "asprintf", ret);
 
     /* rank 0 gets the RDMA credential, stores the identifier in the PMIx kv
      * space, and grants access.  Everyone else will obtain the key and proceed
      */
     if (proc.rank == 0)
     {
-	p_ret = drc-acquire(&drc_credential_id, DRC_FLAGS_FLEX_CREDENTIAL);
-	ASSERT(p_ret == DRC_SUCCESS, "drc_acquire");
+	ret = drc_acquire(&drc_credential_id, DRC_FLAGS_FLEX_CREDENTIAL);
+	ASSERT(ret == DRC_SUCCESS, "drc_acquire", ret);
 
 	PMIX_VALUE_LOAD(&value, &drc_credential_id, PMIX_UINT32);
 	p_ret = PMIx_Put(PMIX_GLOBAL, drc_pmix_key, &value);
-	ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Put");
+	ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Put", 0);
 
 	p_ret = PMIx_Commit();
-	ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Commit");
+	ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Commit", 0);
     }
     PMIX_INFO_CREATE(info, 1);
     flag = true;
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     p_ret = PMIx_Fence(&proc, 1, info, 1);
     PMIX_INFO_FREE(info, 1);
-    ASSERT(p_ret == PMIX_SUCCESS, "PMIX_fence");
+    ASSERT(p_ret == PMIX_SUCCESS, "PMIX_fence", 0);
 
     PMIX_PROC_LOAD(&tmp_proc, proc.nspace, 0);
     p_ret = PMIx_Get(&tmp_proc, drc_pmix_key, NULL, 0, &val_p);
-    ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Get");
+    ASSERT(p_ret == PMIX_SUCCESS, "PMIx_Get", 0);
     drc_credential_id = val_p->data.uint32;
     PMIX_VALUE_RELEASE(val_p);
 
