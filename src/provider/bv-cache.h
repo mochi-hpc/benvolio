@@ -24,6 +24,8 @@
 #include <list>
 
 #define BENVOLIO_CACHE_ENABLE 1
+
+#if BENVOLIO_CACHE_ENABLE==1
 //#define BENVOLIO_CACHE_MAX_N_BLOCKS 32
 //#define BENVOLIO_CACHE_MIN_N_BLOCKS 32
 #define BENVOLIO_CACHE_MAX_FILE 5
@@ -43,7 +45,6 @@ static int BENVOLIO_CACHE_MIN_N_BLOCKS;
 static int BENVOLIO_CACHE_MAX_BLOCK_SIZE;
 static float BENVOLIO_CACHE_WRITE_BACK_RATIO;
 
-#if BENVOLIO_CACHE_ENABLE == 1
 typedef struct {
     std::map<off_t, uint64_t>* cache_page_usage;
     int cache_page_hit_count;
