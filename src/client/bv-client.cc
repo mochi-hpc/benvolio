@@ -319,17 +319,18 @@ static int pack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::v
             mem_vec[0][j] = client->reserved_memory[0][j];
             local_buffer = mem_vec[0][j];
         }
-        ptr = (char*) local_buffer;
-        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
-            memcpy(ptr, my_reqs[0][j].mem_vec[i].first, sizeof(char) * my_reqs[0][j].mem_vec[i].second);
-            ptr += my_reqs[0][j].mem_vec[i].second;
+        if ( op == BV_WRITE ) {
+            ptr = (char*) local_buffer;
+            for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+                memcpy(ptr, my_reqs[0][j].mem_vec[i].first, sizeof(char) * my_reqs[0][j].mem_vec[i].second);
+                ptr += my_reqs[0][j].mem_vec[i].second;
+            }
         }
-
     }
     return 0;
 }
 
-static int unpack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::vector<tl::bulk*> *local_tl_bulks, std::vector<char*> *mem_vec) {
+static int unpack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std::vector<tl::bulk*> *local_tl_bulks, std::vector<char*> *mem_vec, io_kind op) {
     unsigned j, i;
     uint64_t total_mem_size;
     char *packed_mem_ptr;
@@ -344,10 +345,12 @@ static int unpack_mem2(bv_client_t client, std::vector<io_access> *my_reqs, std:
             continue;
         }
         /* Unpack data received to input memory buffer */
-        packed_mem_ptr = (char*)mem_vec[0][j];
-        for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
-            memcpy(my_reqs[0][j].mem_vec[i].first, packed_mem_ptr, sizeof(char) * my_reqs[0][j].mem_vec[i].second);            
-            packed_mem_ptr += my_reqs[0][j].mem_vec[i].second;
+        if ( op == BV_READ ) {
+            packed_mem_ptr = (char*)mem_vec[0][j];
+            for ( i = 0; i < my_reqs[0][j].mem_vec.size(); ++i ) {
+                memcpy(my_reqs[0][j].mem_vec[i].first, packed_mem_ptr, sizeof(char) * my_reqs[0][j].mem_vec[i].second);            
+                packed_mem_ptr += my_reqs[0][j].mem_vec[i].second;
+            }
         }
 
         /* free new tempory buffer */
@@ -432,7 +435,7 @@ static size_t bv_io(bv_client_t client, const char *filename, io_kind op,
     }
     client->statistics.client_write_wait_request_time += ABT_get_wtime() - time;
     time = ABT_get_wtime();
-    unpack_mem2(client, &my_reqs, local_tl_bulks, mem_vec);
+    unpack_mem2(client, &my_reqs, local_tl_bulks, mem_vec, op);
     client->statistics.client_write_post_request_time1 += ABT_get_wtime() - time;
 
     delete local_tl_bulks;
