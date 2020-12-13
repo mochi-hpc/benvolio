@@ -22,8 +22,11 @@
 #include <thallium/margo_exception.hpp>
 
 #include <list>
+namespace tl = thallium;
 
 #define BENVOLIO_CACHE_ENABLE 1
+
+#if BENVOLIO_CACHE_ENABLE==1
 //#define BENVOLIO_CACHE_MAX_N_BLOCKS 32
 //#define BENVOLIO_CACHE_MIN_N_BLOCKS 32
 #define BENVOLIO_CACHE_MAX_FILE 5
@@ -37,13 +40,12 @@
 #define BENVOLIO_CACHE_STATISTICS_DETAILED 0
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
-namespace tl = thallium;
+
 static int BENVOLIO_CACHE_MAX_N_BLOCKS;
 static int BENVOLIO_CACHE_MIN_N_BLOCKS;
 static int BENVOLIO_CACHE_MAX_BLOCK_SIZE;
 static float BENVOLIO_CACHE_WRITE_BACK_RATIO;
 
-#if BENVOLIO_CACHE_ENABLE == 1
 typedef struct {
     std::map<off_t, uint64_t>* cache_page_usage;
     int cache_page_hit_count;
@@ -433,6 +435,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     delete cache_info->cache_mutex_table[0][file];
     delete cache_file_page_refcount_table;
     delete cache_info->cache_offset_list_table[0][file];
+    delete cache_info->cache_mem_mutex_table[0][file];
 
     cache_info->cache_table->erase(file);
     cache_info->cache_page_written_table->erase(file);
@@ -446,6 +449,7 @@ static void cache_remove_file(Cache_info *cache_info, std::string file) {
     cache_info->cache_timestamps->erase(file);
     cache_info->fd_table->erase(file);
     cache_info->cache_backup_memory_table->erase(file);
+    cache_info->cache_mem_mutex_table->erase(file);
 }
 
 static void cache_remove_file_lock(Cache_info *cache_info, std::string file) {
@@ -1099,15 +1103,11 @@ static void cache_finalize(Cache_info *cache_info) {
         }
         delete it11->second;
     }
-    delete cache_info->cache_backup_memory_table;
 
     std::map<std::string, std::map<off_t, size_t>*>::iterator it13;
     for (it13 = cache_info->cache_page_written_table->begin(); it13 != cache_info->cache_page_written_table->end(); ++it13) {
         delete it13->second;
     }
-    delete cache_info->cache_page_written_table;
-
-    delete cache_info->file_size_table;
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
@@ -1135,6 +1135,7 @@ static void cache_finalize(Cache_info *cache_info) {
 
     #endif
 
+    delete cache_info->cache_mem_mutex_table;
     delete cache_info->cache_table;
     delete cache_info->cache_update_table;
     delete cache_info->cache_mutex_table;
@@ -1144,6 +1145,11 @@ static void cache_finalize(Cache_info *cache_info) {
     delete cache_info->cache_block_reserve_table;
     delete cache_info->cache_timestamps;
     delete cache_info->fd_table;
+    delete cache_info->cache_page_refcount_table;
+    delete cache_info->cache_page_written_table;
+    delete cache_info->file_size_table;
+    delete cache_info->cache_backup_memory_table;
+
     #if BENVOLIO_CACHE_STATISTICS == 1
 
     #if BENVOLIO_CACHE_STATISTICS_DETAILED == 1
