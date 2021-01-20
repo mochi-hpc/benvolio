@@ -19,3 +19,5 @@ errors about `Invalid Communicator` when the darshan MPI routines try to call
 into MPICH's library and vice versa.  Darshan is great: build it yourself from
 spack with a dependency on your own MPICH installation
 
+
+*argobots*  `argobot@1.0` used a "weakly atomic" mutex on powerpc .  That means a mutex might yield even if there is no contention.  The result was that some margo operations (`margo_forward_timed`) would occasionally take a really long time to complete.  `argobots@main` has fixed this issue.
