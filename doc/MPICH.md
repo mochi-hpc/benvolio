@@ -1,7 +1,21 @@
 # Benvolio and MPICH
 
-We used to require building MPICH twice, but that is no longer necessary now
-that benvolio uses PMIx to launch the providers.
+You have two choices for how to launch benvolio providers.  If you use MPI to
+launch the providers, we will have to build MPICH twice: MPICH requires
+benvolio headers to build the benvolio driver for ROMIO, but the benvolio
+provider is also going to look for an MPI implementation.
+
+We only have a ROMIO driver for MPICH, so you'll have to build your client
+codes with a personal build of MPICH (not vendor-supplied).
+If you would like to build the benvolio server with "vendor mpi", I think that
+is possible, but it's a bit more work than the "build mpich twice" way, if you
+can believe it.
+
+Future work is to separate the buidling of the provider from the building of
+the client libraries.
+
+If using PMIx to launch the providers, none of this is necessary (though PMIx
+has given us different problems on some platforms).
 
 ## Building
 - If you are not familiar with building MPICH, please see
@@ -13,7 +27,16 @@ that benvolio uses PMIx to launch the providers.
 
     git checkout -b benvolio github-robl/benvolio
 
-- Before you build MPICH, ensure `pkg-config` knows about the `bv-client`
+- An easier way might be to build the "benvolio" snapshot:  I've uploaded it to Box: https://anl.box.com/shared/static/6epyqzrd11xbc8k2mbedbzdsggbvf9u1
+
+    curl -L 'https://anl.box.com/shared/static/6epyqzrd11xbc8k2mbedbzdsggbvf9u1' -o mpich-3.4.1-benvolio.tar.gz
+
+- Stage one: build mpich.  Add this custom-built mpich to  your spack `packages.py` as an external package
+
+- Stage two: build benvolio.  Spack can even do this for you
+
+- Stage three: build MPICH again.  Before you build MPICH this time, ensure `pkg-config`
+  knows about the `bv-client`
   package.  ROMIO's configure will pick up the necessary CFLAGS and LDFLAGS,
   but if `pkg-config --libs bv-client` returns an error, ROMIO configure will
   just plow along without benvolio support. Double check that not only
@@ -22,6 +45,8 @@ that benvolio uses PMIx to launch the providers.
   can do `spack load -r mochi-ssg mochi-abt-io mochi-thallium`
 
 - add 'benvolio' to the `--with-file-system` list: e.g. --with-file-system=lustre+benvolio
+
+- remove the stage
 
 ## Running benvolio on workstations or laptop
 
@@ -50,4 +75,85 @@ statefile.
 
 ## benvolio on facilities
 
-TODO
+Benvolio itself is built the same way on just about any platform, thanks to
+libfabric hiding the details for us.  MPICH and job launchers, however, mean
+configuration is a little different on every machine
+
+### NERSC Cori (Cray, Slurm)
+
+- Spack-0.16.0 seems to have changed the behavior of library resolution on
+  Cori, resulting in programs unable to find libraries. Until we figure out
+  this problem, stick with spack-0.15.3 and the latest `sds-repo`
+- load the GNU compilers with `module swap PrgEnv-intel PrgEnv-gnu`
+- Cori interconnect is gni: use `--with-device=ch4:ofi`
+
+    module swap PrgEnv-intel PrgEnv-gnu
+    tar xf mpich-3.4.1-benvolio.tar.gz
+    cd mpich-3.4.1-benvolio
+    mkdir build
+    cd build
+    ../configure  --prefix=${HOME}/soft/mpich-3.4.1-benvolio --with-device=ch4:ofi --with-pm=none --with-pmi=cray && make -j 8 && make install
+
+- Add this home-built version of mpich as an `external package` to spack's packages.yaml.  For example, I have this in my packages.yaml file using spack-0.16.0 syntax
+
+
+```
+  mpich:
+    externals:
+    - spec: "mpich@7.3.1%gcc@10.1.0"
+      modules:
+      - cray-mpich
+    - spec: "mpich@7.3.1%intel@16.0.0.109"
+      modules:
+      - cray-mpich
+    - spec: "mpich@3.4.1%gcc@8.3.0"
+      prefix: /global/homes/r/robl/soft/mpich-3.4.1-benvolio/
+```
+
+The older 0.15.3 syntax would look like this:
+
+```
+    mpich:
+        paths:
+            mpich@3.4.1: /global/homes/r/robl/soft/mpich-3.4.1-benvolio
+        buildable: False
+        modules:
+            mpich@7.7.6: cray-mpich/7.7.6
+        buildable: False
+```
+
+While we are editing packages.yaml, add an entry for the 'rdma-credentials' facility:
+
+```
+   rdma-credentials:
+        modules:
+           rdma-credentials@1.2.25: rdma-credentials/1.2.25-7.0.1.1_5.14__g86c1dd8.ari
+```
+
+
+- build benvolio using this mpich and load it into your environment
+- take note of the compiler: use whichever gcc compiler was loaded in your
+  environment when you built MPICH.  Otherwise, you will get some confusion
+  when g++10 tries to use symbols that are not available in g++8's c++ runtime.
+- note too we asked for the `cray-drc` variant, a feature on Cray systems that
+  allows separate processes to exchange a token and thereby obtain permission
+  to RDMA into each others addresses.
+
+    spack install benvolio%gcc@8.3.0  +cray-drc +mpi +pmix '^mpich@3.4.1' '^pmix@master
+    spack load -r benvolio
+
+- now build mpich again requesting the benvolio file system
+
+    # double-check benvolio is loaded in your environment
+    $ pkg-config bv-client --cflags
+    # temporarily take `mpich` out of your environment
+    $ spack unload mpich
+    $ ../configure --prefix=${HOME}/soft/mpich-3.4.1-benvolio \
+        --with-device=ch4:ofi \
+        --with-pmi=cray \
+	--with-file-system=lustre+benvolio && make -j 8 && make install
+
+### OLCF Summit (IBM POWER9, jsrun)
+
+### ALCF Theta (Cray, aprun)
+
