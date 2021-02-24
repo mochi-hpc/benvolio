@@ -18,6 +18,9 @@ If using PMIx to launch the providers, none of this is necessary (though PMIx
 has given us different problems on some platforms).
 
 ## Building
+
+Option one: building from git:
+
 - If you are not familiar with building MPICH, please see
   https://wiki.mpich.org/mpich/index.php/Getting_And_Building_MPICH for how to build it.
 
@@ -26,6 +29,8 @@ has given us different problems on some platforms).
 - The benvolio work is in the 'benvolio' branch of the above fork.  For example, assuming you have named your remote repository `github-robl`
 
     git checkout -b benvolio github-robl/benvolio
+
+Option two: building from mpich-3.4.1 snapshot:
 
 - An easier way might be to build the "benvolio" snapshot:  I've uploaded it to Box: https://anl.box.com/shared/static/6epyqzrd11xbc8k2mbedbzdsggbvf9u1
 
@@ -45,8 +50,6 @@ has given us different problems on some platforms).
   can do `spack load -r mochi-ssg mochi-abt-io mochi-thallium`
 
 - add 'benvolio' to the `--with-file-system` list: e.g. --with-file-system=lustre+benvolio
-
-- remove the stage
 
 ## Running benvolio on workstations or laptop
 
@@ -153,7 +156,80 @@ While we are editing packages.yaml, add an entry for the 'rdma-credentials' faci
         --with-pmi=cray \
 	--with-file-system=lustre+benvolio && make -j 8 && make install
 
-### OLCF Summit (IBM POWER9, jsrun)
+### OLCF Summit (IBM POWER9, mpiexec)
+
+- unload the darshan module:  it was built with IBM Spectrum-MPI (OpenMPI
+  based) and you will get unusual errors about invalid communicator.  Once you
+  have told spack about our custom-buit MPICH, build darshan from spack.
+- load the `gcc/9.1.0` module
+- On summit we use UCX: build mpich with `--with-device=ch4:ucx CFLAGS=-std=gnu11`
+- double-check that `mpicc` is not in your path
+
+    module unload darshan
+    module load gcc/9.1.0
+    spack unload mpich
+    tar xf mpich-3.4.1-benvolio.tar.gz
+    cd mpich-3.4.1-benvolio
+    mkdir build
+    cd build
+    ../configure  --prefix=${HOME}/soft/mpich-3.4.1-benvolio \
+            --with-device=ch4:ucx CFLAGS=-std=gnu11 \
+            && make -j 8 && make install
+
+- Add this custom-built mpich as an `external package` to spack's package.yaml.  For example I have this in my spack-0.15.3 packages.yaml:
+
+
+```
+packages:
+    all:
+        compiler: [gcc@9.1.0, xl]
+        providers:
+            mpi: [spectrum-mpi, mpich]
+            pkgconfig: [pkg-config]
+    spectrum-mpi:
+        modules:
+            spectrum-mpi@10.3.1.2%gcc: spectrum-mpi/10.3.1.2-20200121
+        buildable: False
+    mpich:
+        paths:
+            mpich@3.4.1: /ccs/home/robl/soft/mpich-3.4.1-benvolio
+    ...
+```
+
+- As in the Cori example above, build benvolio with this mpich and load it into your environment.  As mentioned in README.summit we need to select some specific versions and variants to work around issues:
+
+    spack install benvolio +mpi+pmix '^mpich' '^pmix@master' '^argobots@1.1b1' '^mercury ~boostsys ~checksum'
+    spack load -r benovlio
+
+- now build mpich again requesting the benvolio file system
+
+    # double-check benvolio is loaded in your environment
+    $ pkg-config bv-client --cflags
+    # temporarily take `mpich` out of your environment
+    $ spack unload mpich
+    $ ../configure --prefix=${HOME}/soft/mpich-3.4.1-benvolio \
+        --with-device=ch4:ucx CFLAGS=-std=gnu11 \
+	--with-file-system=lustre+benvolio && make -j 8 && make install
+    $ spack load -r mpich
+
+- mpich interaction with the 'jsrun' job launcher is hit or miss.  Instead,
+  generate a list of nodes and pass that list to mpiexec.  Additionally, the
+  '--launch-method=ssh' flag will ensure MPICH uses the slower but more
+  reliable ssh-based method
+
+```
+SERVERS=2
+CLIENTS=6
+
+jsrun -r 1 hostname > hostfile
+head -${SERVERS} hostfile > servers
+tail -n +$(($SERVERS+1)) hostfile > clients
+
+# launch the benvolio providers
+mpiexec -f servers -launcher ssh -ppn 1 -n ${SERVERS} ... &
+# launch the mpi job
+mpiexec -f clients -launcher ssh -ppn $((22)) -n $((CLIENTS*22))
+
 
 ### ALCF Theta (Cray, aprun)
 
