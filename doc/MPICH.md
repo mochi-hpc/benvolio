@@ -30,11 +30,11 @@ Option one: building from git:
 
     git checkout -b benvolio github-robl/benvolio
 
-Option two: building from mpich-3.4.1 snapshot:
+Option two: building from mpich-3.4b1 snapshot:
 
 - An easier way might be to build the "benvolio" snapshot:  I've uploaded it to Box: https://anl.box.com/shared/static/6epyqzrd11xbc8k2mbedbzdsggbvf9u1
 
-    curl -L 'https://anl.box.com/shared/static/6epyqzrd11xbc8k2mbedbzdsggbvf9u1' -o mpich-3.4.1-benvolio.tar.gz
+    curl -L 'https://anl.box.com/shared/static/w4f1msfbfjeqbj15jyikmzwgn2bg5ovr' -o mpich-3.4b1-benvolio.tar.gz
 
 - Stage one: build mpich.  Add this custom-built mpich to  your spack `packages.py` as an external package
 
