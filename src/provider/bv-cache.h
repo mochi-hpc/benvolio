@@ -36,7 +36,7 @@ namespace tl = thallium;
 #define BENVOLIO_CACHE_READ 0
 #define BENVOLIO_CACHE_RESOURCE_CHECK_TIME 58
 #define BENVOLIO_CACHE_RESOURCE_REMOVE_TIME 88
-#define BENVOLIO_CACHE_STATISTICS 0
+#define BENVOLIO_CACHE_STATISTICS 1
 #define BENVOLIO_CACHE_STATISTICS_DETAILED 0
 #define CACULATE_TIMESTAMP(current_timestamp, init_timestamp) ((int)(((current_timestamp) - (init_timestamp))/10))
 
