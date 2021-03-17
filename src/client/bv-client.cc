@@ -497,7 +497,7 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
     client->blocksize = response.blocksize;
     client->stripe_size = response.stripe_size;
     client->stripe_count = response.stripe_count;
-    client->distribution_kind = reponse.distribution_kind;
+    client->distribution_kind = response.distribution_kind;
     stat_time = ABT_get_wtime() - stat_time;
     client->statistics.client_stat_time += stat_time;
     return(0);
