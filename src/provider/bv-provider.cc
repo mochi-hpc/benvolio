@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -31,14 +32,22 @@
 
 #include "bv-cache.h"
 
+
+#ifndef LL_SUPER_MAGIC
+#define LL_SUPER_MAGIC 0x0BD00BD0
+#endif
+
 struct file_info {
     int fd;
     int flags;
+    /* consider storing a 'file_stats' object in here instead of separate
+     * members */
     int32_t stripe_count;
     int32_t stripe_size;
     int32_t blocksize;
+    int32_t distribution_kind;
 
-    file_info(): fd(-1), flags(0), stripe_count(-1), stripe_size(-1), blocksize(-1) {}
+    file_info(): fd(-1), flags(0), stripe_count(-1), stripe_size(-1), blocksize(-1), distribution_kind(-1) {}
 };
 
 struct io_args {
@@ -586,17 +595,18 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         }
         return fd;
     }
-    void setinfo(const std::string &file, int32_t stripe_count, int32_t stripe_size, int32_t blocksize)
+    void setinfo(const std::string &file, int32_t stripe_count, int32_t stripe_size, int32_t blocksize, int32_t distribution_kind)
     {
         // Unlike open, no need to search: we'll either update an existing
         // filetable entry or create a new one
         filetable[file].stripe_count = stripe_count;
         filetable[file].stripe_size = stripe_size;
         filetable[file].blocksize = blocksize;
+        filetable[file].distribution_kind = distribution_kind;
     }
     file_stats getinfo(const std::string &file)
     {
-        return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize);
+        return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize, filetable[file].distribution_kind);
     }
 
 
@@ -1029,6 +1039,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	int rc;
         struct file_stats ret;
         struct stat statbuf;
+        struct statfs statfsbuf;
+        char *dup = NULL;
 
         file_stats cached_stats = getinfo(file);
         if (cached_stats.stripe_count != -1)
@@ -1038,9 +1050,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 
         rc = stat(file.c_str(), &statbuf);
 	if (rc == -1 && errno == ENOENT) {
-	    char * dup = strdup(file.c_str());
+	    dup = strdup(file.c_str());
 	    rc = stat(dirname(dup), &statbuf);
-	    free(dup);
 	}
 	if (rc == 0)
 	    ret.blocksize = statbuf.st_blksize;
@@ -1048,12 +1059,40 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
 	    /* some kind of error in stat. make a reasonable guess */
 	    ret.blocksize = 4096;
 
-	/* lustre header incompatible with c++ , so need to stuff the lustre
-	 * bits into a c-compiled object */
-	ret.status  = lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
+        /* guess some reasonable defaults for non-lustre systems */
+        ret.stripe_size = ret.blocksize;
+        ret.stripe_count = ssg_size;
+
+        ret.distribution_kind = BV_BLOCK_ALIGNED;
+        if (dup != NULL) {
+            rc = statfs(dirname(dup), &statfsbuf);
+        } else {
+            rc = statfs(file.c_str(), &statfsbuf);
+        }
+        if (rc == 0) {
+            if (statfsbuf.f_type == LL_SUPER_MAGIC) {
+                ret.distribution_kind = BV_GROUP_CYCLIC;
+                /* lustre header incompatible with c++ , so need to stuff the lustre
+                 * bits into a c-compiled object */
+                ret.status  = lustre_getstripe(file.c_str(), &(ret.stripe_size), &(ret.stripe_count));
+            }
+        }
+
+        /* environment variables supercede our guessed defaults or our api calls */
+        char *p = getenv("BENVOLIO_STRIPE_SIZE");
+        if (p != NULL)
+            ret.stripe_size = atoi(p);
+
+        p = getenv("BENVOLIO_STRIPE_COUNT");
+        if (p != NULL)
+            ret.stripe_count = atoi(p);
+
+        p = getenv("BENVOLIO_DISTRIBUTION_KIND");
+        if (p != NULL)
+            ret.distribution_kind = atoi(p);
 
         /* we would like to avoid making a stat() call in the future */
-        setinfo(file, ret.stripe_count, ret.stripe_size, ret.blocksize);
+        setinfo(file, ret.stripe_count, ret.stripe_size, ret.blocksize, ret.distribution_kind);
 
         return ret;
     }

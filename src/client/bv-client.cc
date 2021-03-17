@@ -92,6 +92,7 @@ struct bv_client {
     int stripe_size = 4096;
     int stripe_count = 1;
     int targets_used = 1;
+    int distribution_kind = BV_BLOCK_ALIGNED;
 
     bv_client(tl::engine *e, ssg_group_id_t group) :
         engine(e),
@@ -490,11 +491,13 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
     stats->blocksize = response.blocksize;
     stats->stripe_size = response.stripe_size;
     stats->stripe_count = response.stripe_count;
+    stats->distribution_kind = response.distribution_kind;
 
     /* also update client information.  This should probably be a 'map' keyed on file name */
     client->blocksize = response.blocksize;
     client->stripe_size = response.stripe_size;
     client->stripe_count = response.stripe_count;
+    client->distribution_kind = reponse.distribution_kind;
     stat_time = ABT_get_wtime() - stat_time;
     client->statistics.client_stat_time += stat_time;
     return(0);

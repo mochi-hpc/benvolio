@@ -92,6 +92,7 @@ struct bv_stats {
     ssize_t blocksize;
     int32_t stripe_size;
     int32_t stripe_count;
+    int32_t distribution_kind;
 };
 int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats);
 
