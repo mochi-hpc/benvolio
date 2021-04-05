@@ -528,9 +528,15 @@ int bv_statistics(bv_client_t client, int show_server)
 int bv_flush(bv_client_t client, const char *filename)
 {
     double flush_time = ABT_get_wtime();
-    int ret=0;
+    int ret=0, result=0;
+    std::vector<tl::async_response> responses;
     for (auto target : client->targets)
-        ret = client->flush_op.on(target)(std::string(filename));
+        responses.push_back(client->flush_op.on(target).async(std::string(filename)));
+
+    for (auto &r : responses) {
+        result = r.wait();
+        ret += result;
+    }
 
     flush_time = ABT_get_wtime() - flush_time;
     client->statistics.client_flush_time += flush_time;
