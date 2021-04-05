@@ -485,6 +485,10 @@ ssize_t bv_read(bv_client_t client, const char *filename,
 
 int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 {
+    if (client->targets[0].is_null()) {
+        fprintf(stderr, "stat: unable to stat NULL target\n");
+        return -1;
+    }
     double stat_time = ABT_get_wtime();
     file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
 
