@@ -54,11 +54,11 @@ Option two: building from mpich-3.4b1 snapshot:
 ## Running benvolio on workstations or laptop
 
 To test benvolio on a laptop, one can follow the same appraoch we take in the
-benvolio tests (see
-<https://xgitlab.cels.anl.gov/sds/benvolio/blob/master/tests/wrap_runs.sh>)
+benvolio tests (see 
+<https://github.com/mochi-hpc/benvolio/blob/main/tests/wrap_runs.sh>)
 
 1. Start a PMIx runtime and the benvolio provider processes (see
-<https://xgitlab.cels.anl.gov/sds/benvolio/blob/master/README.md>)
+<https://github.com/mochi-hpc/benvolio/blob/main/README.md>)
 
 2.  We tell MPICH codes about the benvolio state file with an environment
 variable: set the environment variable `BV_STATEFILE` to point to the server

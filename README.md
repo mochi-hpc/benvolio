@@ -144,4 +144,4 @@ bulk_create_elapsed,0.000027227,0.000136137,0.000003099,0.000055313,5
 
 For more informaiton about Margo-level informatio, including profiling and the
 immensely informative "breadcrumb" feature, please refer to [Margo
-Instrumentation](https://xgitlab.cels.anl.gov/sds/margo/blob/master/doc/instrumentation.md)
+Instrumentation](https://github.com/mochi-hpc/mochi-margo/blob/main/doc/instrumentation.md)
