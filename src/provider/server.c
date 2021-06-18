@@ -266,6 +266,13 @@ int main(int argc, char **argv)
     free(proto);
     free(statefile);
 
+    if (rank == 0) {
+        char *cfg_str;
+	cfg_str = margo_get_config(mid);
+	printf("%s\n", cfg_str);
+        free(cfg_str);
+    }
+
     margo_wait_for_finalize(mid);
 #ifdef USE_PMIX
     PMIx_Finalize(NULL, 0);
