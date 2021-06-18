@@ -491,7 +491,11 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
         return -1;
     }
     double stat_time = ABT_get_wtime();
-    file_stats response = client->stat_op.on(client->targets[0])(std::string(filename));
+    /* stat: providers maintain a stat cache, but N clients hitting one
+     * provider could be slow to respond.  for example: 1280 clients banging away at one
+     * provider means some end up taking 20 seconds waiting for a response */
+    int index = rand() % client->targets.size();
+    file_stats response = client->stat_op.on(client->targets[index])(std::string(filename));
 
     stats->blocksize = response.blocksize;
     stats->stripe_size = response.stripe_size;
