@@ -146,6 +146,9 @@ int main(int argc, char **argv)
     int xfersize=1024;
     int nthreads=4;
     int nstreams=4;
+    struct margo_init_info minfo = {0};
+    char json[256] = {0};
+
 
     while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
         switch (c) {
@@ -218,7 +221,18 @@ int main(int argc, char **argv)
         nstreams = 2;
         printf("Requested streams too small.  Overriding to %d\n", nstreams);
     }
-    mid = margo_init_opt(proto, MARGO_SERVER_MODE, &hii, 0, nstreams);
+
+    minfo.json_config = json;
+    /* default argobots pool kind is "fifo_wait".  "prio_wait" gives priority
+     * to in-progress rpcs */
+    sprintf(json, "{\"argobots\":{\"pools\":[{\"name\":\"__rpc__\", "
+        "\"kind\":\"prio_wait\" }]},"
+      "\"mercury\":{\"auth_key\":\"%s\"},"
+      "\"rpc_thread_count\":%d"
+      "}",
+      drc_key_str, nstreams);
+
+    mid = margo_init_ext(proto, MARGO_SERVER_MODE, &minfo);
     ASSERT(mid != MARGO_INSTANCE_NULL, "margo_init_opt (mid=%d)", 0);
 
     margo_enable_remote_shutdown(mid);
