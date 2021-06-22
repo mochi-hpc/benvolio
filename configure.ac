@@ -54,6 +54,8 @@ LIBS="$DRC_LIBS $LIBS"
 CPPFLAGS="$DRC_CFLAGS $CPPFLAGS"
 CFLAGS="$DRC_CFLAGS $CFLAGS"
 
+AC_CHECK_LIB([margo], [margo_finalize])
+
 # Bootstrapping: we can do it with either MPI or PMIx, but both require SSG to
 # support it.  We need to check for both SSG's level of support as well as
 # general support in the environment.
@@ -134,6 +136,11 @@ AC_CHECK_HEADERS([lustre/lustreapi.h])
 
 # statx: a lightweight way to ask for only a subset of information
 AC_CHECK_FUNCS(statx)
+
+# margo_init_ext: initialize margo with a json string
+# margo_get_config: returns a json string describing internal state of margo and dependencies
+AC_CHECK_FUNCS(margo_init_ext margo_get_config)
+
 
 AC_CONFIG_FILES([Makefile maint/bv-client.pc maint/bv-provider.pc])
 AC_OUTPUT

@@ -146,8 +146,6 @@ int main(int argc, char **argv)
     int xfersize=1024;
     int nthreads=4;
     int nstreams=4;
-    struct margo_init_info minfo = {0};
-    char json[256] = {0};
 
 
     while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
@@ -222,6 +220,10 @@ int main(int argc, char **argv)
         printf("Requested streams too small.  Overriding to %d\n", nstreams);
     }
 
+#ifdef HAVE_MARGO_INIT_EXT
+    struct margo_init_info minfo = {0};
+    char json[256] = {0};
+
     minfo.json_config = json;
     /* default argobots pool kind is "fifo_wait".  "prio_wait" gives priority
      * to in-progress rpcs */
@@ -233,7 +235,10 @@ int main(int argc, char **argv)
       drc_key_str, nstreams);
 
     mid = margo_init_ext(proto, MARGO_SERVER_MODE, &minfo);
-    ASSERT(mid != MARGO_INSTANCE_NULL, "margo_init_opt (mid=%d)", 0);
+#else
+    mid = margo_init_opt(proto, MARGO_SERVER_MODE, &hii, 0, nstreams);
+#endif
+    ASSERT(mid != MARGO_INSTANCE_NULL, "lmargo_init_* (mid=%d)", 0);
 
     margo_enable_remote_shutdown(mid);
 
@@ -280,12 +285,14 @@ int main(int argc, char **argv)
     free(proto);
     free(statefile);
 
+#ifdef HAVE_MARGO_GET_CONFIG
     if (rank == 0) {
         char *cfg_str;
 	cfg_str = margo_get_config(mid);
 	printf("%s\n", cfg_str);
         free(cfg_str);
     }
+#endif
 
     margo_wait_for_finalize(mid);
 #ifdef USE_PMIX
