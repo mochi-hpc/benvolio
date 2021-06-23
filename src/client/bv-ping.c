@@ -11,6 +11,11 @@ int main(int argc, char **argv)
     int ret = 0;
     size_t count = 0;
     bv_config_t cfg = bvutil_cfg_get(argv[1]);
+    if (cfg == NULL) {
+        fprintf(stderr, "Unable to obtain benvolio config\n");
+        return -1;
+    }
+
     bv_client_t client= bv_init(cfg);
     bvutil_cfg_free(cfg);
 

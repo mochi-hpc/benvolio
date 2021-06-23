@@ -150,6 +150,9 @@ bv_client_t bv_init(bv_config_t config)
     double init_time = ABT_get_wtime();
     struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
 
+    if (config == NULL)
+        return NULL;
+
     /* we used to do a scalable read-and-broadcast inside bv_init.  I then
      * decided the scalable broadcast part of that was better handled outside
      * of benvolio.  Let the MPI-IO driver or HDF5 vol deal with exchanging
@@ -616,8 +619,10 @@ bv_config_t bvutil_cfg_get(const char *filename)
     if (!Ssg_Initialized) ssg_init();
 
     ret = ssg_group_id_load(filename, &cfg->nr_providers, cfg->group_ids);
-    if (ret != SSG_SUCCESS) fprintf(stderr, "ssg_group_id_load: %d\n", ret);
-    assert (ret == SSG_SUCCESS);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "ssg_group_id_load: %d\n", ret);
+        return NULL;
+    }
     char *buf;
     ssg_group_id_serialize(cfg->group_ids[0], cfg->nr_providers, &buf, &cfg->size);
     /* ssg_group_id_serialize internally allocated a buffer storing the group
