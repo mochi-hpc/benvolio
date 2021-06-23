@@ -606,7 +606,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     }
     file_stats getinfo(const std::string &file)
     {
-        return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize, filetable[file].distribution_kind);
+        auto result = filetable.find(file);
+        if (result != filetable.end()) {
+            return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize, filetable[file].distribution_kind);
+        }
+        return NOTFOUND;
     }
 
 
@@ -1043,7 +1047,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         char *dup = NULL;
 
         file_stats cached_stats = getinfo(file);
-        if (cached_stats.stripe_count != -1)
+        if (cached_stats != NOTFOUND)
             return cached_stats;
 
         stats.stat_calls++;

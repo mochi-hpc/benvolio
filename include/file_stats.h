@@ -3,7 +3,8 @@
 
 enum {
     BV_BLOCK_ALIGNED,
-    BV_GROUP_CYCLIC
+    BV_GROUP_CYCLIC,
+    NONE
 };
 
 
@@ -33,3 +34,18 @@ class file_stats {
         /* data redistribution scheme */
         int32_t distribution_kind;
 };
+
+bool operator==(const file_stats &lhs, const file_stats &rhs)
+{
+	return lhs.stripe_size == rhs.stripe_size &&
+		lhs.stripe_count == rhs.stripe_count &&
+		lhs.blocksize == rhs.blocksize  &&
+		lhs.distribution_kind == rhs.distribution_kind;
+}
+
+bool operator!=(const file_stats lhs, const file_stats &rhs)
+{
+	return !(lhs == rhs);
+}
+
+static const file_stats NOTFOUND = file_stats(-1, -1, -1, NONE);
