@@ -47,7 +47,7 @@ struct file_info {
     int32_t blocksize;
     int32_t distribution_kind;
 
-    file_info(): fd(-1), flags(0), stripe_count(-1), stripe_size(-1), blocksize(-1), distribution_kind(-1) {}
+    file_info(): fd(-1), flags(0), stripe_count(-1), stripe_size(-1), blocksize(-1), distribution_kind(BV_UNSET) {}
 };
 
 struct io_args {
@@ -607,7 +607,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
     file_stats getinfo(const std::string &file)
     {
         auto result = filetable.find(file);
-        if (result != filetable.end()) {
+        if (result != filetable.end() || result->second.distribution_kind != BV_UNSET) {
             return file_stats(filetable[file].stripe_size, filetable[file].stripe_count, filetable[file].blocksize, filetable[file].distribution_kind);
         }
         return NOTFOUND;

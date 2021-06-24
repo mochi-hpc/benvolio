@@ -4,7 +4,7 @@
 enum {
     BV_BLOCK_ALIGNED,
     BV_GROUP_CYCLIC,
-    NONE
+    BV_UNSET = -1
 };
 
 
@@ -48,4 +48,4 @@ bool operator!=(const file_stats lhs, const file_stats &rhs)
 	return !(lhs == rhs);
 }
 
-static const file_stats NOTFOUND = file_stats(-1, -1, -1, NONE);
+static const file_stats NOTFOUND = file_stats(-1, -1, -1, BV_UNSET);
