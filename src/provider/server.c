@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_MARGO_INIT_EXT
     struct margo_init_info minfo = {0};
-    char json[256] = {0};
+    char json[512] = {0};
 
     minfo.json_config = json;
     /* default argobots pool kind is "fifo_wait".  "prio_wait" gives priority
