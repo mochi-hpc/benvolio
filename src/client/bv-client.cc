@@ -250,11 +250,14 @@ int bv_setchunk(const char *file, ssize_t nbytes)
 
 int bv_delete(bv_client_t client, const char *file)
 {
+    if (client == NULL)
+        return -1;
     return client->delete_op.on(client->targets[0])(std::string(file) );
 }
 int bv_finalize(bv_client_t client)
 {
-    if (client == NULL) return 0;
+    if (client == NULL)
+        return -1;
     // cleanup is kind of all over the place:
     // - we remove the client from the ssg group in a margo prefinalize callback.
     // - we finalize margo when thallium's destructor runs.
@@ -453,6 +456,8 @@ ssize_t bv_write(bv_client_t client, const char *filename,
         const int64_t mem_count, const char * mem_addresses[], const uint64_t mem_sizes[],
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
+    if (client == NULL)
+        return -1;
     ssize_t ret;
     double write_time = ABT_get_wtime();
     client->statistics.client_write_calls++;
@@ -473,6 +478,9 @@ ssize_t bv_read(bv_client_t client, const char *filename,
         const int64_t mem_count, const char *mem_addresses[], const uint64_t mem_sizes[],
         const int64_t file_count, const off_t file_starts[], const uint64_t file_sizes[])
 {
+    if (client == NULL)
+        return -1;
+
     ssize_t ret;
     double read_time = ABT_get_wtime();
     client->statistics.client_read_calls++;
@@ -489,6 +497,8 @@ ssize_t bv_read(bv_client_t client, const char *filename,
 
 int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 {
+    if (client == NULL)
+        return -1;
     if (client->targets[0].is_null()) {
         fprintf(stderr, "stat: unable to stat NULL target\n");
         return -1;
@@ -517,6 +527,8 @@ int bv_stat(bv_client_t client, const char *filename, struct bv_stats *stats)
 
 int bv_statistics(bv_client_t client, int show_server)
 {
+    if (client == NULL)
+        return -1;
     int ret =0;
     std::ostringstream output;
     if (show_server) {
@@ -535,6 +547,8 @@ int bv_statistics(bv_client_t client, int show_server)
 
 int bv_flush(bv_client_t client, const char *filename)
 {
+    if (client == NULL)
+        return -1;
     double flush_time = ABT_get_wtime();
     int ret=0, result=0;
     std::vector<tl::async_response> responses;
@@ -553,6 +567,8 @@ int bv_flush(bv_client_t client, const char *filename)
 
 ssize_t bv_getsize(bv_client_t client, const char *filename)
 {
+    if (client == NULL)
+        return -1;
     ssize_t size;
     size = client->size_op.on(client->targets[0])(std::string(filename));
 
@@ -561,6 +577,8 @@ ssize_t bv_getsize(bv_client_t client, const char *filename)
 
 int bv_declare(bv_client_t client, const char *filename, int flags, int mode)
 {
+    if (client == NULL)
+        return -1;
     double declare_time = ABT_get_wtime();
     std::vector<tl::async_response> responses;
     for (auto target : client->targets)
