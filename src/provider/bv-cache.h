@@ -232,7 +232,26 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
     printf("Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total match time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_match_time, cache_stat->cache_total_time);
     sprintf(filename, "provider_timing_log_%d.csv", ssg_rank);
     stream = fopen(filename,"w");
-    fprintf(stream, "Rank %d summary:\n Files registered: %d\n Files register reused: %d\n Write-back function called: %d\n Cache block flushed: %d\n Cache block erased: %d\n Cache page fetch: %d\n Cache page hit: %d\n Total flush time (due to memory limit): %lf\n Total write-back-time: %lf\n Total memory copy: %lf\n Total fetch page time %lf\n maximum request size = %lld\n minimum request size = %lld\n Total match time %lf\n Total cache time %lf\n", ssg_rank, cache_stat->cache_counter.files_register_count, cache_stat->cache_counter.files_reuse_register_count, cache_stat->cache_counter.write_back_count, cache_stat->cache_counter.cache_block_flush_count, cache_stat->cache_counter.cache_erased, cache_stat->cache_counter.cache_page_fetch_count, cache_stat->cache_counter.cache_page_hit_count, cache_stat->flush_time, cache_stat->write_back_time, cache_stat->memcpy_time, cache_stat->cache_fetch_time, cache_info->max_request, cache_info->min_request, cache_stat->cache_match_time, cache_stat->cache_total_time);
+    fprintf(stream,
+            "#Rank,files registered, files reused, "
+            "write-back function called, cache block flushed, "
+            "cache block erased, cache page fetch, cache page hit, "
+            "total flush time, total write back time, total memory copy,"
+            "total fetch page time, max req size, min req size, "
+            "total match time, total cache time\n"
+            "%d,%d,%d,%d,%d,%d,%d,%d,%lf,%lf,%lf,%lf,%lld,%lld,%lf,%lf\n",
+            ssg_rank, cache_stat->cache_counter.files_register_count,
+            cache_stat->cache_counter.files_reuse_register_count,
+            cache_stat->cache_counter.write_back_count,
+            cache_stat->cache_counter.cache_block_flush_count,
+            cache_stat->cache_counter.cache_erased,
+            cache_stat->cache_counter.cache_page_fetch_count,
+            cache_stat->cache_counter.cache_page_hit_count,
+            cache_stat->flush_time, cache_stat->write_back_time,
+            cache_stat->memcpy_time, cache_stat->cache_fetch_time,
+            cache_info->max_request, cache_info->min_request,
+            cache_stat->cache_match_time, cache_stat->cache_total_time);
+
     fclose(stream);
 
     //cache_counter per timestamp is summed up here
