@@ -13,6 +13,7 @@ class io_stats {
             write_expose(0.0), read_expose(0.0),
             write_response(0.0), read_response(0.0),
 	    mutex_time(0.0),
+            acquire_pool_time(0.0),
             client_write_calls(0), client_write_time(0.0),
 	    client_bytes_written(0),
 	    client_read_calls(0), client_read_time(0.0),
@@ -44,6 +45,7 @@ class io_stats {
         ar & open_calls;
         ar & stat_calls;
         ar & mutex_time;
+        ar & acquire_pool_time;
         ar & write_bulk_xfers;
         ar & write_bulk_time;
         ar & read_bulk_xfers;
@@ -89,6 +91,7 @@ class io_stats {
 
     /* -- other stats -- */
     double mutex_time;        // time spent acquiring mutexes
+    double acquire_pool_time; // time spent waiting for margo_bulk_pool
 
     /* - client things - */
     int client_write_calls;   // number of times "bv_write" called
@@ -139,6 +142,7 @@ class io_stats {
 	read_response += rhs.read_response;
 
 	mutex_time += rhs.mutex_time;
+        acquire_pool_time += rhs.acquire_pool_time;
 
 	client_write_calls += rhs.client_write_calls;
 	client_write_time += rhs.client_write_time;
@@ -188,7 +192,8 @@ class io_stats {
             << " read_expose " << read_expose
             << " read_response " << read_response
             << " getfd " << getfd
-            << " mutex_time " << mutex_time;
+            << " mutex_time " << mutex_time
+            << " acquire_pool_time " << acquire_pool_time;
         return output.str();
     }
 

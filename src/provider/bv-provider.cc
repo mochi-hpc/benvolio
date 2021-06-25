@@ -205,11 +205,12 @@ static void write_ult(void *_args)
         hg_bulk_t local_bulk;
         hg_uint32_t actual_count;
 
-        double bulk_time, io_time, total_io_time=0.0;
+        double bulk_time, io_time, total_io_time=0.0, acquire_pool_time;
         int write_count=0;
         /* Adopting same aproach as 'bake-server.c' : we will create lots of ULTs,
          * some of which might not end up doing anything */
 
+        acquire_pool_time = ABT_get_wtime();
         /* thread blocks until region from buffer pool available */
         margo_bulk_pool_get(args->mr_pool, &local_bulk);
         /* the bulk pool only provides us with handles to local bulk regions.  Get the associated memory */
@@ -217,12 +218,14 @@ static void write_ult(void *_args)
         const tl::bulk local = args->engine->wrap(local_bulk, 1);
         //margo_bulk_free(local_bulk); // thallium wrap() increments refcount
         //but triggers segfault
+        acquire_pool_time = ABT_get_wtime() - acquire_pool_time;
 
         mutex_time = ABT_get_wtime();
         ABT_mutex_lock(args->mutex);
         // --------------------- args->mutex held ----------------//
         mutex_time = ABT_get_wtime() - mutex_time;
         args->stats.mutex_time += mutex_time;
+
         /* save these three for when we actually do I/O */
         auto first_file_index = args->file_idx;
         auto first_file_cursor = args->fileblk_cursor;
@@ -355,6 +358,7 @@ static void write_ult(void *_args)
         args->stats.server_write_time += total_io_time;
         args->stats.server_write_calls += write_count;
         args->stats.bytes_written += file_xfer;
+        args->stats.acquire_pool_time += acquire_pool_time;
         ABT_mutex_unlock(args->mutex);
     }
 
