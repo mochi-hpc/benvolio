@@ -1123,7 +1123,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         int fd = getfd(file, dontcare);
         #if BENVOLIO_CACHE_ENABLE == 1
         if (!cache_exist(cache_info, file)) {
-            return (fsync(fd));
+            return (abt_io_fdatasync(abt_id, fd));
         }
         Cache_file_info cache_file_info;
         cache_file_info.io_type = BENVOLIO_CACHE_WRITE;
@@ -1135,7 +1135,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         cache_remove_file_lock(cache_info, file);
         #endif
         //printf("provider %d finished flushing\n",ssg_rank);
-        return (fsync(fd));
+        return (abt_io_fdatasync(abt_id, fd));
     }
 
     ssize_t getsize(const std::string &file) {
