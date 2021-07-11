@@ -305,6 +305,7 @@ static void write_ult(void *_args)
             file_xfer += cache_match_lock_free((char*)local_buffer+buf_cursor, args->cache_file_info, file_starts[file_idx]+fileblk_cursor, nbytes);
             #if BENVOLIO_CACHE_STATISTICS == 1
             ABT_mutex_lock(args->mutex);
+            args->cache_file_info->cache_stat->match_lock_free_time += ABT_get_wtime() - time;
             args->cache_file_info->cache_stat->cache_total_time += ABT_get_wtime() - time;
             ABT_mutex_unlock(args->mutex);
             #endif
@@ -687,6 +688,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #endif
         cache_register_lock(cache_info, file ,&cache_file_info);
         #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_register_time += ABT_get_wtime() - time;
         cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
         #endif
 
@@ -712,6 +714,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #endif
         cache_page_register(&cache_file_info, file_starts, file_sizes, &file_starts_array, &file_sizes_array, &pages);
         #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_page_register_time += ABT_get_wtime() - time;
         cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
         cache_file_info.thread_mutex = &(args.mutex);
         #endif
@@ -737,6 +740,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 #endif
                 page_index = cache_page_register2(&cache_file_info, file_starts_array, file_sizes_array, pages, page_index);
                 #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_page_register2_time += ABT_get_wtime() - time;
                 cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
                 #endif
 
@@ -764,6 +768,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
                 #endif
                 cache_page_deregister2(&cache_file_info, pages);
                 #if BENVOLIO_CACHE_STATISTICS == 1
+                cache_file_info.cache_stat->cache_page_deregister2_time += ABT_get_wtime() - time;
                 cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
                 #endif
             }
@@ -789,6 +794,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         #endif
         cache_page_deregister(&cache_file_info, file_starts_array, file_sizes_array, pages);
         #if BENVOLIO_CACHE_STATISTICS == 1
+        cache_file_info.cache_stat->cache_page_deregister_time += ABT_get_wtime() - time;
         cache_file_info.cache_stat->cache_total_time += ABT_get_wtime() - time;
         #endif
         // cache_file_info is no longer valid after deregister

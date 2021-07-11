@@ -64,7 +64,14 @@ typedef struct {
     double write_back_time;
     double cache_fetch_time;
     double cache_match_time;
+    double cache_match_lock_free_time;
     double cache_total_time;
+    double cache_register_time;
+    double cache_page_register_time;
+    double cache_page_register2_time;
+    double cache_page_deregister2_time;
+    double cache_page_deregister_time;
+
 } Cache_stat;
 
 /**
@@ -208,8 +215,14 @@ static void cache_add_stat(Cache_stat *cache_stat1, const Cache_stat *cache_stat
     cache_stat1->memcpy_time += cache_stat2->memcpy_time;
     cache_stat1->cache_fetch_time += cache_stat2->cache_fetch_time;
     cache_stat1->cache_match_time += cache_stat2->cache_match_time;
+    cache_stat1->cache_match_lock_free_time += cache_stat2->cache_match_lock_free_time;
     cache_stat1->write_back_time += cache_stat2->write_back_time;
     cache_stat1->cache_total_time += cache_stat2->cache_total_time;
+    cache_stat1->cache_register_time += cache_stat2->cache_register_time;
+    cache_stat1->cache_page_register_time += cache_stat2->cache_page_register_time;
+    cache_stat1->cache_page_register2_time += cache_stat2->cache_page_register2_time;
+    cache_stat1->cache_page_deregister2_time += cache_stat2->cache_page_deregister2_time;
+    cache_stat1->cache_page_deregister_time += cache_stat2->cache_page_deregister_time;
 }
 
 static void cache_summary(Cache_info *cache_info, int ssg_rank) {
@@ -238,8 +251,9 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
             "cache block erased, cache page fetch, cache page hit, "
             "total flush time, total write back time, total memory copy,"
             "total fetch page time, max req size, min req size, "
-            "total match time, total cache time\n"
-            "%d,%d,%d,%d,%d,%d,%d,%d,%lf,%lf,%lf,%lf,%lld,%lld,%lf,%lf\n",
+            "total match time, total match_lock_free_time,  total cache time"
+            "register, page_register, page_register2, deregister, deregister2\n"
+            "%d,%d,%d,%d,%d,%d,%d,%d,%lf,%lf,%lf,%lf,%lld,%lld,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\n",
             ssg_rank, cache_stat->cache_counter.files_register_count,
             cache_stat->cache_counter.files_reuse_register_count,
             cache_stat->cache_counter.write_back_count,
@@ -250,7 +264,12 @@ static void cache_summary(Cache_info *cache_info, int ssg_rank) {
             cache_stat->flush_time, cache_stat->write_back_time,
             cache_stat->memcpy_time, cache_stat->cache_fetch_time,
             cache_info->max_request, cache_info->min_request,
-            cache_stat->cache_match_time, cache_stat->cache_total_time);
+            cache_stat->cache_match_time,
+            cache_stat->cache_match_lock_free_time,
+            cache_stat->cache_total_time,
+            cache_stat->cache_register_time,
+            cache_stat->cache_page_register_time, cache_stat->cache_page_register2_time,
+            cache_stat->cache_page_deregister_time, cache_stat->cache_page_deregister2_time);
 
     fclose(stream);
 
