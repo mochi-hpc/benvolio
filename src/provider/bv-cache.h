@@ -610,8 +610,11 @@ static void cache_request_counter(Cache_info *cache_info, const std::vector<uint
     #endif
 }
 
-/*
-  This function can only be called when the cache_eviction flag is on.
+/**
+ * This function can only be called when the cache_eviction flag is on.
+ *
+ * @param file_starts_array [out]  starts,sizes describe the I/O we need to do
+ * @param file_sizes_array  [out]
 */
 static int cache_page_register2(Cache_file_info *cache_file_info, const std::vector<std::vector<off_t>*> *file_starts_array, const std::vector<std::vector<uint64_t>*> *file_sizes_array, const std::vector<off_t> *pages, size_t page_index) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
@@ -677,9 +680,10 @@ static int cache_page_register2(Cache_file_info *cache_file_info, const std::vec
     return page_index;
 }
 
-/*
-  This function can only be called when the cache_eviction flag is on.
-*/
+/**
+ *
+ * This function can only be called when the cache_eviction flag is on.
+ */
 static void cache_page_deregister2(Cache_file_info *cache_file_info, const std::vector<off_t> *pages) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     std::vector<off_t> cache_offsets;
@@ -706,7 +710,15 @@ static void cache_page_deregister2(Cache_file_info *cache_file_info, const std::
     cache_file_info->cache_page_table->clear();
 }
 
-/* Align file requests to the boundaries of cache pages. */
+/**
+ * Align file requests to the boundaries of cache pages.
+ *
+ * @param file_starts [in] starting location for file requests
+ * @param file_sizes  [in] see above, for sizes
+ * @param file_starts_array [out] process list of starts; every start,offset pair will fit into a cache page
+ * @param file_sizes_array  [out] see above
+ * @param pages_vec         [out] list of cache pages,
+ */
 static void cache_partition_request(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
     //std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
     std::set<off_t> *pages = new std::set<off_t>;
@@ -783,6 +795,7 @@ static void cache_partition_request(Cache_file_info *cache_file_info, const std:
 /**
    Register the cache pages that are going to be used here.
    cache_page_eviction flag is going to determine if we need to partition the requests due to memory limit.
+   @param pages_vec [out] the cache pages we'll need for this i/o request (populated by cache_partition_request() )
 */
 static void cache_page_register(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, std::vector<std::vector<off_t>*> **file_starts_array, std::vector<std::vector<uint64_t>*> **file_sizes_array, std::vector<off_t> **pages_vec) {
     std::lock_guard<tl::mutex> guard(*(cache_file_info->cache_mutex));
@@ -862,10 +875,14 @@ static void cache_set_file_size(Cache_info *cache_info, const std::string &file,
     }
 }
 
-/*
+/**
  * Initialize a cache_file_info here. It is possible that we should have some additional arguments for I/O to be set as well.
  * We can assume this function register cache_info with some new vectors (or retrieve from it).
  * Always remember to call deregister function when cache_file_info is no longer used.
+ *
+ * @param cache_info  overall cache object
+ * @param file        name of file to which pages are associated
+ * @param cache_file_info[out] a populted Cache_file_info object containing assorted metadata about this cache
 */
 static void cache_register(Cache_info *cache_info, const std::string file, Cache_file_info *cache_file_info) {
 
@@ -1320,6 +1337,11 @@ static void cache_count_request_pages(Cache_file_info *cache_file_info, const of
     }
 }
 
+/**
+ * param: pages [out] a std::set containing offsets of pages that are not in
+ *                    `cache_file_info->cache_table`:  this is a count of new
+ *                    pages that will need to be allocated
+ */
 static void cache_count_request_extra_pages(Cache_file_info *cache_file_info, const off_t file_start, const uint64_t file_size, std::set<off_t> *pages) {
     uint64_t my_provider;
     off_t cache_offset, block_index, subblock_index;
@@ -1356,6 +1378,9 @@ static void cache_count_request_extra_pages(Cache_file_info *cache_file_info, co
     }
 }
 
+/**
+ * how many cache pages does this request touch?
+ */
 static size_t cache_count_requests_pages(Cache_file_info *cache_file_info, const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes) {
     std::set<off_t>* pages = new std::set<off_t>;
     size_t i;
@@ -1534,6 +1559,13 @@ static void cache_allocate_memory(Cache_file_info *cache_file_info, const off_t 
     #endif
 }
 
+/**
+ * @param local_buf consumer memory:  for writes, the memory that will be
+ *                  stored in the cache; for reads, where cached data will be
+ *                  stored
+ * @param cache_file_info  object containing metadata about
+ * @param file_start starting location in file for I/O
+ * @param file_size  how much data this operation will consume/produce */
 static size_t cache_match_lock_free(char* local_buf, Cache_file_info *cache_file_info, const off_t file_start, const uint64_t file_size) {
 /*
     #if BENVOLIO_CACHE_STATISTICS == 1
