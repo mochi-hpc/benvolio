@@ -1743,6 +1743,7 @@ struct resource_manager_args {
     Cache_info *cache_info;
     abt_io_instance_id abt_id;
     int ssg_rank;
+    tl::engine *engine;
 };
 
 static void cache_resource_manager(void *_args) {
@@ -1754,7 +1755,7 @@ static void cache_resource_manager(void *_args) {
         if (temp){
             break;
         }
-        sleep(BENVOLIO_CACHE_RESOURCE_CHECK_TIME);
+        tl::thread::sleep(*args->engine, BENVOLIO_CACHE_RESOURCE_CHECK_TIME);
     }
     ABT_eventual_set(args->eventual, NULL, 0);
     return;

@@ -1213,6 +1213,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rm_args.cache_info = cache_info;
             rm_args.abt_id = abt_id;
             rm_args.ssg_rank = ssg_rank;
+            rm_args.engine = e;
             char *p;
             p = getenv("BENVOLIO_CACHE_MAX_N_BLOCKS");
             if ( p != NULL ) {
