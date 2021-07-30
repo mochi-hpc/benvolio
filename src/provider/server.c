@@ -132,7 +132,6 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     abt_io_instance_id abtio;
     bv_svc_provider_t bv_id;
-    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
     char drc_key_str[256] = {0};
     int ret=0;
     int nprocs;
@@ -207,7 +206,6 @@ int main(int argc, char **argv)
         ASSERT (ret == DRC_SUCCESS, "drc_grant: %d", ret);
     }
 #endif
-    hii.na_init_info.auth_key = drc_key_str;
 
 
     /* margo rpc thread count:
@@ -236,6 +234,8 @@ int main(int argc, char **argv)
 
     mid = margo_init_ext(proto, MARGO_SERVER_MODE, &minfo);
 #else
+    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
+    hii.na_init_info.auth_key = drc_key_str;
     mid = margo_init_opt(proto, MARGO_SERVER_MODE, &hii, 0, nstreams);
 #endif
     ASSERT(mid != MARGO_INSTANCE_NULL, "lmargo_init_* (mid=%d)", 0);

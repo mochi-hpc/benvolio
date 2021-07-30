@@ -31,9 +31,9 @@ static size_t get_lumsize()
 int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *stripe_count)
 {
     int ret = 0;
-    int status = 0;
 
 #ifdef HAVE_LIBLUSTREAPI
+    int status = 0;
     struct lov_user_md *lov;
     lov = alloca(get_lumsize());
 
@@ -66,6 +66,8 @@ int lustre_getstripe(const char * filename, int32_t *stripe_size, int32_t *strip
 	    perror("Unable to get Lustre stripe info");
     };
 
+#else
+    goto fn_exit;  // only a stub in the non-lustre case
 #endif
 
 fn_exit:

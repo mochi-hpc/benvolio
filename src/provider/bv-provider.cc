@@ -59,7 +59,7 @@ struct io_args {
     const margo_bulk_pool_t mr_pool;
     const size_t xfersize;
     const std::vector<off_t> &file_starts;
-    const std::vector<uint64_t> &file_sizes;
+    const std::vector<int64_t> &file_sizes;
     int done=0;
     unsigned int file_idx=0;
     size_t fileblk_cursor=0;
@@ -78,7 +78,7 @@ struct io_args {
 
     io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
             const std::vector<off_t> & start_vec,
-            const std::vector<uint64_t> & size_vec,
+            const std::vector<int64_t> & size_vec,
             Cache_file_info *cache_file_i,
             size_t total_io_a) :
         engine(eng),
@@ -90,8 +90,8 @@ struct io_args {
         xfersize(x),
         file_starts(start_vec),
         file_sizes(size_vec),
-        cache_file_info(cache_file_i),
-        total_io_amount(total_io_a){};
+        total_io_amount(total_io_a),
+        cache_file_info(cache_file_i){};
     #else
     io_args(tl::engine *eng, tl::endpoint e, abt_io_instance_id id, int f, tl::bulk &b, margo_bulk_pool_t p, size_t x,
             const std::vector<off_t> & start_vec,
@@ -132,9 +132,9 @@ void reset_args(struct io_args *args) {
  */
 
 static size_t calc_offsets(const std::vector<off_t> & file_starts,
-        const std::vector<uint64_t> & file_sizes, unsigned int file_idx,
-        size_t fileblk_cursor, size_t local_bufsize,
-        unsigned int *new_file_index, size_t *new_file_cursor)
+        const std::vector<int64_t> & file_sizes, unsigned int file_idx,
+        ssize_t fileblk_cursor, ssize_t local_bufsize,
+        int *new_file_index, ssize_t *new_file_cursor)
 {
         /* - can't do I/O while holding the lock, but instead pretend to do so.
          *   we will consume items from the file description until we have
@@ -145,7 +145,7 @@ static size_t calc_offsets(const std::vector<off_t> & file_starts,
          *   intermediate buffer.  That's OK.  We are trying to compute where the
          *   0th, 1st, ... threads should start */
 
-    size_t file_xfer=0, buf_cursor=0, nbytes, xfered=0;
+    ssize_t file_xfer=0, buf_cursor=0, nbytes, xfered=0;
     while (file_idx < file_starts.size() && file_xfer < local_bufsize) {
         nbytes = MIN(file_sizes[file_idx] - fileblk_cursor, local_bufsize-buf_cursor);
         file_xfer += nbytes;
@@ -174,19 +174,19 @@ static void write_ult(void *_args)
     struct io_args *args = (struct io_args *)_args;
     /* The "how far along we are in bulk transfer" state persists across every
      * loop of the "obtain buffer / do i/o" cycle */
-    size_t client_xfer=0, client_cursor=0;
+    ssize_t client_xfer=0, client_cursor=0;
      /* "which block of file description" and "how far into block" also persist
       * across every loop */
-    unsigned int file_idx=0;
-    size_t fileblk_cursor;
+    size_t file_idx=0;
+    ssize_t fileblk_cursor;
     double mutex_time;
 
     #if BENVOLIO_CACHE_ENABLE == 1
     const std::vector<off_t> file_starts = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_starts): args->file_starts;
-    const std::vector<uint64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
+    const std::vector<int64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
     #else
     const std::vector<off_t> file_starts = args->file_starts;
-    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    const std::vector<int64_t> file_sizes = args->file_sizes;
     #endif
 
     while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
@@ -194,9 +194,9 @@ static void write_ult(void *_args)
         //printf("entered loop with client_cursor = %ld, total_io_amount == %ld, file_idx = %ld, file_starts.size() = %ld\n", args->client_cursor, args->total_io_amount, file_idx, file_starts.size());
         void *local_buffer;
         size_t local_bufsize;
-        size_t buf_cursor=0;
-        size_t xfered=0; // total number of bytes moved in this thread
-        size_t nbytes;  // number of bytes for a single i/o operation
+        ssize_t buf_cursor=0;
+        ssize_t xfered=0; // total number of bytes moved in this thread
+        ssize_t nbytes;  // number of bytes for a single i/o operation
         ssize_t file_xfer=0; // actual number of bytes sent to file system
         size_t issued = 0; // how many bytes have we sent to abt_io.  We'll
                             // collect the actual amount of data transfered
@@ -206,6 +206,7 @@ static void write_ult(void *_args)
         hg_uint32_t actual_count;
 
         double bulk_time, io_time, total_io_time=0.0, acquire_pool_time;
+
         int write_count=0;
         /* Adopting same aproach as 'bake-server.c' : we will create lots of ULTs,
          * some of which might not end up doing anything */
@@ -233,8 +234,8 @@ static void write_ult(void *_args)
 
         /* figure out what we would have done so we can update shared 'arg'
          * state and drop the lock */
-        unsigned int new_file_idx;
-        size_t new_file_cursor;
+        int new_file_idx;
+        ssize_t new_file_cursor;
         client_xfer = calc_offsets(file_starts, file_sizes, args->file_idx, args->fileblk_cursor, local_bufsize,
                 &new_file_idx, &new_file_cursor);
 
@@ -292,6 +293,7 @@ static void write_ult(void *_args)
         std::list<ssize_t> rets;
         #endif
         io_time = ABT_get_wtime();
+        (void) io_time; // unused in the "cache enable" path but is used if cache disabled
         while (file_idx < file_starts.size() && issued < local_bufsize) {
             // we might be able to only write a partial block
             //rets.push_back(-1);
@@ -386,14 +388,14 @@ static void read_ult(void *_args)
     struct io_args *args = (struct io_args *)_args;
     size_t client_xfer=0, client_cursor=0 ,temp;
     unsigned int file_idx=0;
-    size_t fileblk_cursor;
+    ssize_t fileblk_cursor;
 
     #if BENVOLIO_CACHE_ENABLE == 1
     const std::vector<off_t> file_starts = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_starts): args->file_starts;
-    const std::vector<uint64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
+    const std::vector<int64_t> file_sizes = args->cache_file_info->cache_evictions? *(args->cache_file_info->file_sizes): args->file_sizes;
     #else
     const std::vector<off_t> file_starts = args->file_starts;
-    const std::vector<uint64_t> file_sizes = args->file_sizes;
+    const std::vector<int64_t> file_sizes = args->file_sizes;
     #endif
 
     while (args->client_cursor < args->total_io_amount && file_idx < file_starts.size() )
@@ -401,7 +403,8 @@ static void read_ult(void *_args)
         void *local_buffer;
         size_t local_bufsize;
         size_t buf_cursor=0;
-        size_t xfered=0, nbytes, file_xfer=0;
+        ssize_t xfered=0, nbytes;
+        size_t file_xfer=0;
         hg_bulk_t local_bulk;
         hg_uint32_t actual_count;
 
@@ -427,8 +430,8 @@ static void read_ult(void *_args)
         auto first_file_cursor = args->fileblk_cursor;
         client_cursor = args->client_cursor;
 
-        unsigned int new_file_idx;
-        size_t new_file_cursor;
+        int new_file_idx;
+        ssize_t new_file_cursor;
 
         /* figure out what we would have done so we can update shared 'arg'
          * state and drop the lock */
@@ -623,7 +626,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
      * - bulk-get into a contig buffer
      * - write out to file */
     ssize_t process_write(const tl::request& req, tl::bulk &client_bulk, const std::string &file,
-            const std::vector<off_t> &file_starts, const std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
+            const std::vector<off_t> &file_starts, const std::vector<int64_t> &file_sizes, int stripe_count, int stripe_size)
     {
         unsigned i;
 	struct io_stats local_stats;
@@ -705,7 +708,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         //size_t ntimes = 1 + (client_bulk.size() -1)/xfersize;
         #if BENVOLIO_CACHE_ENABLE == 1
 
-        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<int64_t>*> *file_sizes_array;
         std::vector<std::vector<off_t>*> *file_starts_array;
         std::vector<off_t> *pages;
 
@@ -722,11 +725,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
 
             cache_file_info.file_starts = new std::vector<off_t>;
-            cache_file_info.file_sizes = new std::vector<uint64_t>;
+            cache_file_info.file_sizes = new std::vector<int64_t>;
 
             //printf("process write total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
-            int page_index = 0;
+            size_t page_index = 0;
 
             while (page_index < pages->size()) {
 
@@ -842,9 +845,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
      * as with write, might require multiple bulk-puts to complete if read
      * request larger than buffer */
     ssize_t process_read(const tl::request &req, tl::bulk &client_bulk, const std::string &file,
-            std::vector<off_t> &file_starts, std::vector<uint64_t> &file_sizes, int stripe_count, int stripe_size)
+            std::vector<off_t> &file_starts, std::vector<int64_t> &file_sizes, int stripe_count, int stripe_size)
     {
-        unsigned i;
 	struct io_stats local_stats;
         double read_time = ABT_get_wtime();
 
@@ -935,7 +937,7 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         // ceiling division.  Will bail out early if we exhaust file description
         //size_t ntimes = 1 + (client_bulk.size() - 1)/bufsize;
         #if BENVOLIO_CACHE_ENABLE == 1
-        std::vector<std::vector<uint64_t>*> *file_sizes_array;
+        std::vector<std::vector<int64_t>*> *file_sizes_array;
         std::vector<std::vector<off_t>*> *file_starts_array;
         std::vector<off_t> *pages;
 
@@ -951,11 +953,11 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
         if (cache_file_info.cache_evictions) {
             // The number of pages is beyond our budget, we have to align requests to individual pages. The pages are going to be processed in smaller batches, depending on how much page budget we have left.
             cache_file_info.file_starts = new std::vector<off_t>;
-            cache_file_info.file_sizes = new std::vector<uint64_t>;
+            cache_file_info.file_sizes = new std::vector<int64_t>;
 
             //printf("process read total_io_amount = %ld, total requests = %ld, we have %ld pages, file_start[0] = %llu file_sizes[0] = %llu\n", total_io_amount, file_sizes.size(), file_sizes_array->size(), file_starts[0], file_sizes[0]);
             total_io_amount = 0;
-            int page_index = 0;
+            size_t page_index = 0;
             while (page_index < pages->size()) {
 
                 ABT_mutex_create(&args.mutex);
