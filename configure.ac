@@ -139,7 +139,7 @@ AC_CHECK_FUNCS(statx)
 
 # margo_init_ext: initialize margo with a json string
 # margo_get_config: returns a json string describing internal state of margo and dependencies
-AC_CHECK_FUNCS(margo_init_ext margo_get_config)
+AC_CHECK_FUNCS(margo_init_ext margo_get_config abt_io_get_config)
 
 
 AC_CONFIG_FILES([Makefile maint/bv-client.pc maint/bv-provider.pc])

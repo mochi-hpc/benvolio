@@ -21,6 +21,8 @@
 #include <rdmacred.h>
 #endif
 
+#include <json-c/json.h>
+
 
 #define ASSERT(__cond, __msg, ...) { if(!(__cond)) { fprintf(stderr, "[%s:%d] " __msg, __FILE__, __LINE__, __VA_ARGS__); exit(-1); } }
 
@@ -54,6 +56,29 @@ void print_address(margo_instance_id mid)
 void service_config_store(char *filename, ssg_group_id_t gid, int count)
 {
     ssg_group_id_store(filename, gid, count);
+}
+
+static char* readfile(const char* filename) {
+    FILE *f = fopen(filename, "r");
+    int ret;
+    if(!f) {
+        perror("fopen");
+        fprintf(stderr, "\tCould not open json file \"%s\"\n", filename);
+        exit(EXIT_FAILURE);
+    }
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* string = malloc(fsize + 1);
+    ret = fread(string, 1, fsize, f);
+    if(ret < 0) {
+        perror("fread");
+        fprintf(stderr, "\tCould not read json file \"%s\"\n", filename);
+        exit(EXIT_FAILURE);
+    }
+    fclose(f);
+    string[fsize] = 0;
+    return string;
 }
 
 #ifdef USE_PMIX
@@ -141,13 +166,14 @@ int main(int argc, char **argv)
     int c;
     char *proto=NULL;
     char *statefile=NULL;
+    char *jsonfile=NULL;
     int bufsize=1024;
     int xfersize=1024;
     int nthreads=4;
     int nstreams=4;
 
 
-    while ( (c = getopt(argc, argv, "p:b:s:t:f:x:" )) != -1) {
+    while ( (c = getopt(argc, argv, "p:b:s:t:f:x:j:" )) != -1) {
         switch (c) {
             case 'p':
                 proto = strdup(optarg);
@@ -164,11 +190,14 @@ int main(int argc, char **argv)
             case 'f':
                 statefile = strdup(optarg);
                 break;
+            case 'j':
+                jsonfile = strdup(optarg);
+                break;
             case 'x':
                 xfersize = atoi(optarg);
                 break;
             default:
-                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s streams] [-f statefile] [-x xfersize]\n", argv[0]);
+                printf("usage: %s [-p address] [-b buffer_size] [-t threads] [-s streams] [-f statefile] [-j json-config] [-x xfersize]\n", argv[0]);
                 exit(-1);
         }
     }
@@ -218,19 +247,39 @@ int main(int argc, char **argv)
         printf("Requested streams too small.  Overriding to %d\n", nstreams);
     }
 
+    json_object *margo_json=NULL, *abtio_json=NULL;
+    if (jsonfile != NULL) {
+	    /* our json file has two objects: one for margo and one for abt-io.
+             * cannot just hand the whole thing to either component */
+            char * json_cfg = readfile(jsonfile);
+            json_object *full_json = json_tokener_parse(json_cfg);
+            if (full_json != NULL) {
+                if (!json_object_object_get_ex(full_json, "margo", &margo_json)) {
+                    fprintf(stderr, "Unable to find Margo object in json config\n");
+                }
+                if (!json_object_object_get_ex(full_json, "abt-io", &abtio_json)) {
+                    fprintf(stderr, "Unable to find ABT-IO object in json config\n");
+                }
+            }
+    }
+
 #ifdef HAVE_MARGO_INIT_EXT
     struct margo_init_info minfo = {0};
-    char json[512] = {0};
+    if (margo_json != NULL) {
+         minfo.json_config = json_object_to_json_string(margo_json);
+    } else {
+        char json[512] = {0};
 
-    minfo.json_config = json;
-    /* default argobots pool kind is "fifo_wait".  "prio_wait" gives priority
-     * to in-progress rpcs */
-    sprintf(json, "{\"argobots\":{\"pools\":[{\"name\":\"__rpc__\", "
-        "\"kind\":\"prio_wait\" }]},"
-      "\"mercury\":{\"auth_key\":\"%s\"},"
-      "\"rpc_thread_count\":%d"
-      "}",
-      drc_key_str, nstreams);
+        minfo.json_config = json;
+        /* default argobots pool kind is "fifo_wait".  "prio_wait" gives priority
+         * to in-progress rpcs */
+        sprintf(json, "{\"argobots\":{\"pools\":[{\"name\":\"__rpc__\", "
+                "\"kind\":\"prio_wait\" }]},"
+                "\"mercury\":{\"auth_key\":\"%s\"},"
+                "\"rpc_thread_count\":%d"
+                "}",
+                drc_key_str, nstreams);
+    }
 
     mid = margo_init_ext(proto, MARGO_SERVER_MODE, &minfo);
 #else
@@ -242,9 +291,15 @@ int main(int argc, char **argv)
 
     margo_enable_remote_shutdown(mid);
 
-    /* set this is "number of backing threads" to whatever is best for
-     * the underlying backing store. */
-    abtio = abt_io_init(nthreads);
+    struct abt_io_init_info abtio_ii = {NULL, 0};
+    if (abtio_json != NULL)
+        abtio_ii.json_config = json_object_to_json_string(abtio_json);
+    /* We used to set this "number of backing threads" via command line
+     * argument to whatever is best for the underlying backing store, as
+     * determined by microbenchmarking (fio). Now that setting is managed by
+     * the json config */
+    abtio = abt_io_init_ext(&abtio_ii);
+    ASSERT(abtio != ABT_IO_INSTANCE_NULL, "abtio_init failed", 0);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
     ret = ssg_init();
@@ -293,14 +348,22 @@ int main(int argc, char **argv)
     free(proto);
     free(statefile);
 
-#ifdef HAVE_MARGO_GET_CONFIG
+    /* dump json out for reference.  Need to split up the margo and abt-io bits
+     * at initialization but glue them back together for an input json */
     if (rank == 0) {
-        char *cfg_str;
+        printf("{\n    \"margo\":\n");
+        char *cfg_str = NULL;
+#ifdef HAVE_MARGO_GET_CONFIG
 	cfg_str = margo_get_config(mid);
 	printf("%s\n", cfg_str);
         free(cfg_str);
-    }
 #endif
+#ifdef HAVE_ABT_IO_GET_CONFIG
+        cfg_str = abt_io_get_config(abtio);
+        printf(",\n    \"abt-io\":%s}\n", cfg_str);
+        free(cfg_str);
+#endif
+    }
 
     margo_wait_for_finalize(mid);
 #ifdef USE_PMIX
