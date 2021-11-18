@@ -1206,8 +1206,8 @@ struct bv_svc_provider : public tl::provider<bv_svc_provider>
             rpcs.push_back(define("ping", &bv_svc_provider::ping));
             rpcs.push_back(define("setsize", &bv_svc_provider::setsize));
             #if BENVOLIO_CACHE_ENABLE == 1
-            ssg_size = ssg_get_group_size(gid);
-            ssg_rank = ssg_get_group_self_rank(gid);
+            ssg_get_group_size(gid, &ssg_size);
+            ssg_get_group_self_rank(gid, &ssg_rank);
             cache_info = (Cache_info*) malloc(sizeof(Cache_info));
             cache_init(cache_info);
             cache_info->ssg_rank = ssg_rank;

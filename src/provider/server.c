@@ -258,13 +258,18 @@ int main(int argc, char **argv)
      * - any necessary transport credentials */
 
 #ifdef USE_PMIX
-    gid = ssg_group_create_pmix(mid, BV_PROVIDER_GROUP_NAME, proc, &g_conf, NULL, NULL);
+    ret = ssg_group_create_pmix(mid, BV_PROVIDER_GROUP_NAME, proc, &g_conf, NULL, NULL, &gid);
     ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_pmix() failed (ret = %s)","SSG_GROUP_ID_NULL");
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "ssg_group_create_pmix() failed (ret = %d)\n", ret);
+    }
 #endif
 
 #ifdef USE_MPI
-    gid = ssg_group_create_mpi(mid, BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, &g_conf, NULL, NULL);
-    ASSERT(gid != SSG_GROUP_ID_INVALID, "ssg_group_create_mpi() failed (ret = %s)" , "SSG_GROUP_ID_NULL");
+    ret = ssg_group_create_mpi(mid, BV_PROVIDER_GROUP_NAME, MPI_COMM_WORLD, &g_conf, NULL, NULL, &gid);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "ssg_group_create_mpi() failed (ret = %d)\n", ret);
+    }
 #endif
 
     finalize_args_t args = {
@@ -274,7 +279,10 @@ int main(int argc, char **argv)
     margo_push_prefinalize_callback(mid, &finalized_ssg_group_cb, (void*)&args);
 
 
-    nprocs = ssg_get_group_size(gid);
+    ret = ssg_get_group_size(gid, &nprocs);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "unable to get ssg group size (%d)\n", ret);
+    }
     /* only one member of the SSG group needs to write out the file.  Clients
      * will load and deserialize the file to find this ssg group and observe it */
 

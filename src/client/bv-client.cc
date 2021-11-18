@@ -186,13 +186,16 @@ bv_client_t bv_init(bv_config_t config)
     hii.na_init_info.auth_key = drc_key_str;
 #endif
 
-    addr_str = ssg_group_id_get_addr_str(ssg_gids[0], 0);
+    ret = ssg_group_id_get_addr_str(ssg_gids[0], 0, &addr_str);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "bv_init: unable to obtain address\n");
+        return NULL;
+    }
     char * proto = get_proto_from_addr(addr_str);
     if (proto == NULL) return NULL;
 
     auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE,
             false /* use progress thread*/, 0 /* thread count: none needed for client */, &hii);
-    free(addr_str);
 
     bv_client *client = new bv_client(theEngine, ssg_gids[0]);
 
@@ -206,16 +209,32 @@ bv_client_t bv_init(bv_config_t config)
     ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "bv_init: unable to observe: (%d) Is remote provider at %s running?\n",
-             ret, ssg_group_id_get_addr_str(ssg_gids[0], 0));
+             ret, addr_str);
         delete client;
         return NULL;
     }
-    nr_targets = ssg_get_group_size(client->gid);
+    free(addr_str);
+    ret = ssg_get_group_size(client->gid, &nr_targets);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "bv_init: unable to get group size (%d)\n", ret);
+        delete client;
+        return NULL;
+    }
 
     for (i=0; i< nr_targets; i++) {
+        ssg_member_id_t id;
+        hg_addr_t addr;
+        ret = ssg_get_group_member_id_from_rank(client->gid, i, &id);
+        if (ret != SSG_SUCCESS) {
+            fprintf(stderr, "unable to get %dth member id\n", i);
+        }
+        ret = ssg_get_group_member_addr(client->gid, id, &addr);
+        if (ret != SSG_SUCCESS) {
+            fprintf(stderr, "unable to resolve %dth address\n", i);
+        }
+
         tl::endpoint server(*(client->engine),
-             ssg_get_group_member_addr(client->gid, ssg_get_group_member_id_from_rank(client->gid, i)),
-                 0 /* do not take ownership: ssg created these handles */ );
+            addr, 0 /* do not take ownership: ssg created these handles */ );
         client->targets.push_back(tl::provider_handle(server, 0xABC));
     }
 
