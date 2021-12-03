@@ -299,7 +299,7 @@ int main(int argc, char **argv)
      * determined by microbenchmarking (fio). Now that setting is managed by
      * the json config */
     abtio = abt_io_init_ext(&abtio_ii);
-    ASSERT(abtio != ABT_IO_INSTANCE_NULL, "abtio_init failed", 0);
+    ASSERT(abtio != ABT_IO_INSTANCE_NULL, "abtio_init failed (abtio=%d", 0);
     margo_push_finalize_callback(mid, finalize_abtio, (void*)abtio);
 
     ret = ssg_init();
