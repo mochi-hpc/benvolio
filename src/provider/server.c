@@ -169,7 +169,6 @@ int main(int argc, char **argv)
     char *jsonfile=NULL;
     int bufsize=1024;
     int xfersize=1024;
-    int nthreads=4;
     int nstreams=4;
 
 
@@ -183,9 +182,6 @@ int main(int argc, char **argv)
                 break;
             case 's':
                 nstreams = atoi(optarg);
-                break;
-            case 't':
-                nthreads = atoi(optarg);
                 break;
             case 'f':
                 statefile = strdup(optarg);
