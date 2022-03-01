@@ -37,7 +37,7 @@ typedef struct {
 static void finalized_ssg_group_cb(void* data)
 {
     finalize_args_t *args = (finalize_args_t *)data;
-    ssg_group_unobserve(args->g_id);
+    ssg_group_leave(args->g_id);
     // do not finalize ssg here.  because benvolio initializes ssg before
     // margo, bv needs to finalize ssg after margo_finalize (or in this case,
     // after deleting the thallium engine
@@ -186,7 +186,7 @@ bv_client_t bv_init(bv_config_t config)
     hii.na_init_info.auth_key = drc_key_str;
 #endif
 
-    ret = ssg_group_id_get_addr_str(ssg_gids[0], 0, &addr_str);
+    ret = ssg_get_group_member_addr_str(ssg_gids[0], 0, &addr_str);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "bv_init: unable to obtain address\n");
         return NULL;
@@ -206,7 +206,7 @@ bv_client_t bv_init(bv_config_t config)
     margo_push_prefinalize_callback(client->engine->get_margo_instance(), &finalized_ssg_group_cb, (void *)args);
 
 
-    ret = ssg_group_observe(client->engine->get_margo_instance(), client->gid);
+    ret = ssg_group_leave(client->gid);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "bv_init: unable to observe: (%d) Is remote provider at %s running?\n",
              ret, addr_str);
