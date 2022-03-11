@@ -19,6 +19,9 @@
 #include <thallium/serialization/stl/vector.hpp>
 #include <thallium/margo_exception.hpp>
 
+#include <nlohmann/json.hpp>
+using nlohmann::json;
+
 #include <list>
 #include "bv-provider.h"
 
@@ -1292,6 +1295,14 @@ static void bv_on_finalize(void *args)
     delete provider;
 }
 
+int bv_provider_destroy(
+        bv_svc_provider_t provider)
+{
+    margo_provider_pop_prefinalize_callback(provider->engine->get_margo_instance(), provider);
+    bv_on_finalize(provider);
+    return 0;
+}
+
 int bv_svc_provider_register(margo_instance_id mid,
         abt_io_instance_id abtio,
         ABT_pool pool,
@@ -1317,3 +1328,54 @@ int bv_svc_provider_register(margo_instance_id mid,
     return 0;
 }
 
+json parse_and_validate_json_config(std::string config)
+{
+    if (config.empty()) {
+        auto result = json::object();
+        return result;
+    }
+    json json_config;
+    json_config = json::parse(config);
+
+    return json_config;
+}
+
+
+int bv_svc_provider_register_ext(
+        margo_instance_id mid,
+        uint16_t provider_id,
+        abt_io_instance_id abtio,
+        ABT_pool pool,
+        ssg_group_id_t gid,
+        const char *config,
+        bv_svc_provider_t *bv_id)
+{
+    /* TODO: too much repetition here.  instead, parse the json and call
+     * original bv_svc_provider register */
+    auto thallium_engine = new tl::engine(mid);
+    ABT_pool handler_pool;
+
+    if (pool == ABT_POOL_NULL)
+        margo_get_handler_pool(mid, &handler_pool);
+    else
+        handler_pool = pool;
+
+    auto thallium_pool = tl::pool(handler_pool);
+
+    auto json_config = parse_and_validate_json_config(config);
+    int buffer_size = json_config.value("buffer_size", 4096);
+    int xfer_size = json_config.value("xfer_size", 1024*1024);
+    auto bv_provider = new bv_svc_provider(thallium_engine, abtio, gid,
+            provider_id, buffer_size, xfer_size, thallium_pool);
+    margo_provider_push_prefinalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
+    *bv_id = bv_provider;
+    return 0;
+}
+
+
+char *bv_svc_provider_get_config(bv_svc_provider_t provider) {
+    json json_config;
+    json_config["buffer_size"] = provider->bufsize;
+    json_config["xfer_size"] = provider->xfersize;
+    return strdup(json_config.dump().c_str());
+}

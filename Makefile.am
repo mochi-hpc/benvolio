@@ -39,13 +39,17 @@ src_client_bv_ping_SOURCES = src/client/bv-ping.c
 src_client_bv_ping_LDADD = lib/libbv-client.la
 
 lib_LTLIBRARIES = lib/libbv-client.la \
-    lib/libbv-provider.la
+    lib/libbv-provider.la \
+    lib/libbv-bedrock.la
 
 lib_libbv_client_la_SOURCES = src/client/bv-client.cc \
 				  src/client/calc-request.cc
 
 lib_libbv_provider_la_SOURCES = src/provider/bv-provider.cc \
                                     src/provider/lustre-utils.c
+
+lib_libbv_bedrock_la_SOURCES = src/provider/bv-bedrock.c
+lib_libbv_bedrock_la_LIBADD = lib/libbv-provider.la
 
 include_HEADERS = include/bv.h \
 	include/bv-provider.h

@@ -1,0 +1,95 @@
+{
+	"margo": {
+		"argobots":{
+			"__pools_comment":"In addition to the traditional progress and rpc pools, Benvolio sets up a third pool for abt-io",
+			"pools":[
+				{
+					"name":"bv_io_pool"
+				},
+				{
+					"name":"__primary__"
+				},
+				{
+					"name":"bv_rpc_pool"
+				}
+			],
+			"__xstreams_comment":"How many xstreams to use? that depends on benchmarking.  Here we specify four for i/o, but more typically you'll want 16 or more.",
+			"xstreams":[
+				{
+					"name":"__primary__",
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "__primary__" ]
+					}
+				},
+				{
+					"name":"rpc_xstream",
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "bv_rpc_pool" ]
+					}
+				},
+				{
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "bv_io_pool" ]
+					}
+				},
+				{
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "bv_io_pool" ]
+					}
+				},
+				{
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "bv_io_pool" ]
+					}
+				},
+				{
+					"scheduler":{
+						"type":"basic_wait",
+						"pools":[ "bv_io_pool" ]
+					}
+				}
+			],
+			"progress_pool":"__primary__",
+			"rpc_pool":"bv_rpc_pool"
+		}
+	},
+	"ssg": {
+		"name": "benvolio",
+		"bootstrap":"init",
+		"group_file":"bv-svc.ssg",
+		"swim": {
+			"disabled": true
+		}
+	},
+	"abt_io":
+		[
+		{
+		"name": "abt_io_bv",
+		"pool": "bv_io_pool"
+		}
+	],
+	"libraries": {
+		"benvolio":"libbv-bedrock.so"
+	},
+	"providers": [
+	    {
+		"name": "benvolio_provider",
+		"type": "benvolio",
+		"provider_id": 1234,
+		"pool": "__primary__",
+		"config": {
+			"buffer_size": 9999,
+			"xfer_size": 8888
+		},
+		"dependencies": {
+			"storage": "abt_io_bv",
+			"group":  "benvolio"
+		}
+	    }
+	]
+}
