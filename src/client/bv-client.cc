@@ -161,7 +161,14 @@ bv_client_t bv_init(bv_config_t config)
      * benvolio dependency on MPI -- making it easier to package and deploy.
      * Does mean we have two places where we might have to initialize ssg */
 
-    if (!Ssg_Initialized) ssg_init();
+    if (!Ssg_Initialized) {
+        int ret;
+        ret = ssg_init();
+        if (ret != SSG_SUCCESS) {
+            fprintf(stderr, "Error: unable to initialize SSG: %s: (%d)", ssg_strerror(ret), ret);
+            return NULL;
+        }
+    }
     ssg_group_id_t ssg_gids[config->nr_providers];
     ssg_group_id_deserialize(config->buf, config->size, &config->nr_providers, ssg_gids);
     if (*ssg_gids == SSG_GROUP_ID_INVALID)
@@ -188,7 +195,7 @@ bv_client_t bv_init(bv_config_t config)
 
     ret = ssg_get_group_member_addr_str(ssg_gids[0], 0, &addr_str);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "bv_init: unable to obtain address\n");
+        fprintf(stderr, "bv_init: unable to obtain address: %s\n", ssg_strerror(ret));
         return NULL;
     }
     char * proto = get_proto_from_addr(addr_str);
@@ -208,15 +215,16 @@ bv_client_t bv_init(bv_config_t config)
 
     ret = ssg_group_leave(client->gid);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "bv_init: unable to observe: (%d) Is remote provider at %s running?\n",
-             ret, addr_str);
+        fprintf(stderr, "bv_init: unable to observe: %s Is remote provider at %s running? %d\n",
+             ssg_strerror(ret), addr_str, ret);
         delete client;
         return NULL;
     }
     free(addr_str);
     ret = ssg_get_group_size(client->gid, &nr_targets);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "bv_init: unable to get group size (%d)\n", ret);
+        fprintf(stderr, "bv_init: unable to get group size: %s (%d)\n",
+                ssg_strerror(ret), ret);
         delete client;
         return NULL;
     }
@@ -226,11 +234,13 @@ bv_client_t bv_init(bv_config_t config)
         hg_addr_t addr;
         ret = ssg_get_group_member_id_from_rank(client->gid, i, &id);
         if (ret != SSG_SUCCESS) {
-            fprintf(stderr, "unable to get %dth member id\n", i);
+            fprintf(stderr, "unable to get %dth member id: %s\n", i,
+                    ssg_strerror(ret));
         }
         ret = ssg_get_group_member_addr(client->gid, id, &addr);
         if (ret != SSG_SUCCESS) {
-            fprintf(stderr, "unable to resolve %dth address\n", i);
+            fprintf(stderr, "unable to resolve %dth address: %s\n", i,
+                    ssg_strerror(ret));
         }
 
         tl::endpoint server(*(client->engine),
@@ -256,6 +266,7 @@ bv_client_t bv_init(bv_config_t config)
     }
 
 
+    Ssg_Initialized = 1;
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
 }
@@ -653,11 +664,17 @@ bv_config_t bvutil_cfg_get(const char *filename)
     /* can't make any ssg calls until calling ssg_init(), so even though we are
      * out of the main bv_init path, we still have to set up some ssg
      * structures */
-    if (!Ssg_Initialized) ssg_init();
+    if (!Ssg_Initialized) {
+        ret = ssg_init();
+        if (ret != SSG_SUCCESS) {
+            fprintf(stderr, "ssg_init: %s (%d)\n", ssg_strerror(ret), ret);
+            return NULL;
+        }
+    }
 
     ret = ssg_group_id_load(filename, &cfg->nr_providers, cfg->group_ids);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "ssg_group_id_load: %d\n", ret);
+        fprintf(stderr, "ssg_group_id_load: %s (%d)\n", ssg_strerror(ret), ret);
         return NULL;
     }
     char *buf;
