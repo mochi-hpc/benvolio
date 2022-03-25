@@ -1,3 +1,7 @@
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <bv.h>
 #include <thallium.hpp>
 #include <utility>
@@ -28,8 +32,6 @@ extern "C" {
 
 namespace tl = thallium;
 
-static int Ssg_Initialized=0;
-
 typedef struct {
     ssg_group_id_t g_id;
     margo_instance_id m_id;
@@ -38,9 +40,7 @@ static void finalized_ssg_group_cb(void* data)
 {
     finalize_args_t *args = (finalize_args_t *)data;
     ssg_group_leave(args->g_id);
-    // do not finalize ssg here.  because benvolio initializes ssg before
-    // margo, bv needs to finalize ssg after margo_finalize (or in this case,
-    // after deleting the thallium engine
+    ssg_finalize();
     free(args);
 }
 
@@ -57,7 +57,9 @@ struct bv_config {
      * - summit: 60 bytes
      * - lapotp: 50 bytes
      * - theta : 80 bytes
-     * call it 200 bytes per record. */
+     * call it 200 bytes per record.
+     * The ssg group file also has a header but it is negligible in size
+     * compared to a group identifier. */
     char buf[max_providers*200];
     bv_config() : nr_providers(max_providers) {};
 };
@@ -133,19 +135,8 @@ typedef enum {
     BV_WRITE
 } io_kind;
 
-/* note: alters addr_str */
-static char * get_proto_from_addr(char *addr_str)
-{
-    char *p = addr_str;
-    char *q = strchr(addr_str, ':');
-    if (q == NULL) return NULL;
-    *q = '\0';
-    return p;
-}
-
 bv_client_t bv_init(bv_config_t config)
 {
-    char *addr_str;
     int ret, i, nr_targets;
     double init_time = ABT_get_wtime();
     struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
@@ -158,24 +149,7 @@ bv_client_t bv_init(bv_config_t config)
      * of benvolio.  Let the MPI-IO driver or HDF5 vol deal with exchanging
      * data among clients in whatever way it thinks is best (probably a
      * read-and-broadcast).  Complicates client a bit, but eliminates a
-     * benvolio dependency on MPI -- making it easier to package and deploy.
-     * Does mean we have two places where we might have to initialize ssg */
-
-    if (!Ssg_Initialized) {
-        int ret;
-        ret = ssg_init();
-        if (ret != SSG_SUCCESS) {
-            fprintf(stderr, "Error: unable to initialize SSG: %s: (%d)", ssg_strerror(ret), ret);
-            return NULL;
-        }
-    }
-    ssg_group_id_t ssg_gids[config->nr_providers];
-    ssg_group_id_deserialize(config->buf, config->size, &config->nr_providers, ssg_gids);
-    if (*ssg_gids == SSG_GROUP_ID_INVALID)
-    {
-        fprintf(stderr, "Error: Unable to deserialize SSG group ID\n");
-        return NULL;
-    }
+     * benvolio dependency on MPI -- making it easier to package and deploy. */
 
 #ifdef USE_DRC
     int64_t ssg_cred;
@@ -184,7 +158,7 @@ bv_client_t bv_init(bv_config_t config)
     char drc_key_str[256] = {0};
     uint32_t drc_cookie;
 
-    ssg_cred = ssg_group_id_get_cred(ssg_gids[0]);
+    ssg_cred = ssg_get_group_cred_from_buf(cfg->buf);
     drc_credential_id = (uint32_t)ssg_cred;
 
     drc_access(drc_credential_id, 0, &drc_credential_info);
@@ -193,18 +167,30 @@ bv_client_t bv_init(bv_config_t config)
     hii.na_init_info.auth_key = drc_key_str;
 #endif
 
-    ret = ssg_get_group_member_addr_str(ssg_gids[0], 0, &addr_str);
+    char proto[256];
+    ret = ssg_get_group_transport_from_buf(config->buf, sizeof(config->buf), proto, 256);
     if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "bv_init: unable to obtain address: %s\n", ssg_strerror(ret));
+        fprintf(stderr, "bv_init: unable to obtain transport: %s\n", ssg_strerror(ret));
         return NULL;
     }
-    char * proto = get_proto_from_addr(addr_str);
-    if (proto == NULL) return NULL;
 
     auto theEngine = new tl::engine(proto, THALLIUM_CLIENT_MODE,
             false /* use progress thread*/, 0 /* thread count: none needed for client */, &hii);
 
-    bv_client *client = new bv_client(theEngine, ssg_gids[0]);
+    /* good: now with thallium, margo, argobots all initialied, we can carry out more SSG operations */
+    ret = ssg_init();
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "Error: unable to initialize SSG: %s: (%d)", ssg_strerror(ret), ret);
+        return NULL;
+    }
+    ret = ssg_group_id_deserialize(config->buf, sizeof(config->buf), &(config->nr_providers), config->group_ids);
+    if (ret != SSG_SUCCESS) {
+        fprintf(stderr, "Error: Unable to deserialize SSG group ID\n");
+        return NULL;
+    }
+
+    //TODO (#1) -- should I try to load-balance across the N ssg memmbers?
+    bv_client *client = new bv_client(theEngine, config->group_ids[0]);
 
     finalize_args_t *args = (finalize_args_t *)malloc(sizeof(finalize_args_t));
     args->g_id = client->gid;
@@ -213,14 +199,18 @@ bv_client_t bv_init(bv_config_t config)
     margo_push_prefinalize_callback(client->engine->get_margo_instance(), &finalized_ssg_group_cb, (void *)args);
 
 
-    ret = ssg_group_leave(client->gid);
+    ret = ssg_group_refresh(client->engine->get_margo_instance(), client->gid);
     if (ret != SSG_SUCCESS) {
+        char * addr_str;
+        ssg_member_id_t member_id;
+        ssg_get_group_member_id_from_rank(client->gid, 0, &member_id);
+        ssg_get_group_member_addr_str(client->gid, member_id, &addr_str);
         fprintf(stderr, "bv_init: unable to observe: %s Is remote provider at %s running? %d\n",
              ssg_strerror(ret), addr_str, ret);
         delete client;
+        free(addr_str);
         return NULL;
     }
-    free(addr_str);
     ret = ssg_get_group_size(client->gid, &nr_targets);
     if (ret != SSG_SUCCESS) {
         fprintf(stderr, "bv_init: unable to get group size: %s (%d)\n",
@@ -266,7 +256,6 @@ bv_client_t bv_init(bv_config_t config)
     }
 
 
-    Ssg_Initialized = 1;
     client->statistics.client_init_time = ABT_get_wtime() - init_time;
     return client;
 }
@@ -655,35 +644,28 @@ int bv_setsize(bv_client_t client, const char *filename, int64_t length) {
     return ret;
 }
 
+/* Under the abstraction, we are simply trying to load an ssg group file into
+ * memory.  Older SSG let us do a bit more with the group file, but recent
+ * changes limit what we can do before initializing ssg, argobots, and margo.
+ * No problem: we'll just stuff the whole file in memory for something (MPI,
+ * whatever) to share with every other client */
 bv_config_t bvutil_cfg_get(const char *filename)
 {
     bv_config_t cfg = new (bv_config);
 
-    int ret;
+    int cfg_fd;
+    FILE *stream;
+    size_t ret, bytes_read, inbuf_size=4096;
+    char inbuf[inbuf_size];
 
-    /* can't make any ssg calls until calling ssg_init(), so even though we are
-     * out of the main bv_init path, we still have to set up some ssg
-     * structures */
-    if (!Ssg_Initialized) {
-        ret = ssg_init();
-        if (ret != SSG_SUCCESS) {
-            fprintf(stderr, "ssg_init: %s (%d)\n", ssg_strerror(ret), ret);
-            return NULL;
-        }
+    cfg_fd = open(filename, O_RDONLY);
+    stream = fmemopen(cfg->buf, sizeof(cfg->buf)-1, "w");
+    while( (bytes_read = read(cfg_fd, inbuf, inbuf_size) ) > 0) {
+        ret = fwrite(inbuf, 1, bytes_read, stream);
+        if (ret != bytes_read) break;
     }
-
-    ret = ssg_group_id_load(filename, &cfg->nr_providers, cfg->group_ids);
-    if (ret != SSG_SUCCESS) {
-        fprintf(stderr, "ssg_group_id_load: %s (%d)\n", ssg_strerror(ret), ret);
-        return NULL;
-    }
-    char *buf;
-    ssg_group_id_serialize(cfg->group_ids[0], cfg->nr_providers, &buf, &cfg->size);
-    /* ssg_group_id_serialize internally allocated a buffer storing the group
-     * information.  Get that data into our config object in a form that is
-     * easily shared with other processes */
-    memcpy(cfg->buf, buf, cfg->size);
-    free (buf);
+    fclose(stream);
+    close(cfg_fd);
 
     return cfg;
 }
