@@ -233,9 +233,10 @@ bv_client_t bv_init(bv_config_t config)
                     ssg_strerror(ret));
         }
 
+        // TODO #2: determine this provider-id through the bedrock query interface
         tl::endpoint server(*(client->engine),
             addr, 0 /* do not take ownership: ssg created these handles */ );
-        client->targets.push_back(tl::provider_handle(server, 0xABC));
+        client->targets.push_back(tl::provider_handle(server, 1234));
     }
 
     /**
