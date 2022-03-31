@@ -651,6 +651,8 @@ int bv_setsize(bv_client_t client, const char *filename, int64_t length) {
  * whatever) to share with every other client */
 bv_config_t bvutil_cfg_get(const char *filename)
 {
+    if (filename == NULL) return NULL;
+
     bv_config_t cfg = new (bv_config);
 
     int cfg_fd;
