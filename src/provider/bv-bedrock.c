@@ -14,7 +14,7 @@ static struct bedrock_dependency bv_client_dependencies[] = {
     BEDROCK_NO_MORE_DEPENDENCIES
 };
 
-static int benvolio_register_provier (
+static int benvolio_register_provider (
         bedrock_args_t args,
         bedrock_module_provider_t* provider)
 {
@@ -74,11 +74,11 @@ static int benvolio_create_provider_handle(
         uint16_t provider_id,
         bedrock_module_provider_handle_t *ph)
 {
-    printf("Unexpected client provier handle create\n");
+    printf("Unexpected client provider handle create\n");
     return 0;
 }
 
-static int benvolio_destroy_provier_handle(
+static int benvolio_destroy_provider_handle(
         bedrock_module_provider_handle_t ph)
 {
     printf("Unexpected client provider handle destroy\n");
@@ -87,14 +87,14 @@ static int benvolio_destroy_provier_handle(
 
 
 static struct bedrock_module benvolio_module = {
-    .register_provider = benvolio_register_provier,
+    .register_provider = benvolio_register_provider,
     .deregister_provider = benvolio_deregister_provider,
     .get_provider_config = benvolio_get_provider_config,
     .init_client = benvolio_init_client,
     .finalize_client = benvolio_finalize_client,
     .get_client_config = benvolio_get_client_config,
     .create_provider_handle = benvolio_create_provider_handle,
-    .destroy_provider_handle = benvolio_destroy_provier_handle,
+    .destroy_provider_handle = benvolio_destroy_provider_handle,
     .provider_dependencies = bv_provider_dependencies,
     .client_dependencies = bv_client_dependencies
 };
