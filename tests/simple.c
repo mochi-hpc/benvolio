@@ -10,6 +10,14 @@
 
 #define VERBOSE 1
 
+/*
+ * usage: simple BV-STATEFILE [filename]
+ *
+ * where
+ * - BV-STATEFILE is the SSG group information the provider wrote out for you
+ * - [filename] is an optional filename -- "dummy" in current directory will be used otherwise
+ *
+ */
 int main(int argc, char **argv)
 {
     bv_client_t client=NULL;
