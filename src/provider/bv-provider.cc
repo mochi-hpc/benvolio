@@ -1298,7 +1298,7 @@ static void bv_on_finalize(void *args)
 int bv_provider_destroy(
         bv_svc_provider_t provider)
 {
-    margo_provider_pop_prefinalize_callback(provider->engine->get_margo_instance(), provider);
+    margo_provider_pop_finalize_callback(provider->engine->get_margo_instance(), provider);
     bv_on_finalize(provider);
     return 0;
 }
@@ -1323,7 +1323,7 @@ int bv_svc_provider_register(margo_instance_id mid,
     auto thallium_pool = tl::pool(handler_pool);
 
     auto bv_provider = new bv_svc_provider(thallium_engine, abtio, gid, provider_id, bufsize, xfersize, thallium_pool);
-    margo_provider_push_prefinalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
+    margo_provider_push_finalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
     *bv_id = bv_provider;
     return 0;
 }
@@ -1367,7 +1367,7 @@ int bv_svc_provider_register_ext(
     int xfer_size = json_config.value("xfer_size", 1024*1024);
     auto bv_provider = new bv_svc_provider(thallium_engine, abtio, gid,
             provider_id, buffer_size, xfer_size, thallium_pool);
-    margo_provider_push_prefinalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
+    margo_provider_push_finalize_callback(mid, bv_provider, bv_on_finalize, bv_provider);
     *bv_id = bv_provider;
     return 0;
 }
